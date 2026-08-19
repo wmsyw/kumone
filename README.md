@@ -105,7 +105,7 @@ below, but their design and implementation ideas were referenced extensively:
 
 - [YesPlayMusic](https://github.com/qier222/YesPlayMusic) (MIT, © qier222) — feature design, NetEase API endpoints and behavior
 - [kaset](https://github.com/sozercan/kaset) (MIT, © sozercan) — UI design system, motion, and SwiftPM packaging approach
-- [UnblockNeteaseMusic/server](https://github.com/UnblockNeteaseMusic/server) (LGPL-3.0-only) — third-party source endpoints and matching strategy for gray tracks (`UnblockService.swift` is an independent Swift reimplementation)
+- [UnblockNeteaseMusic/server](https://github.com/UnblockNeteaseMusic/server) (LGPL-3.0-only) — third-party source endpoints and matching strategy for gray tracks (`UnblockService.swift` is an independent Swift reimplementation, first introduced in Kumone at `d6499a6`). Audited upstream reference points are the `enhanced` branch at [`1d64281c0fae81a4e3cf21f176706b0baa3a606d`](https://github.com/UnblockNeteaseMusic/server/commit/1d64281c0fae81a4e3cf21f176706b0baa3a606d) and the comparable `v0.27.10` tag at [`df91df76c99d28522f28c310a907aaf641501a8a`](https://github.com/UnblockNeteaseMusic/server/commit/df91df76c99d28522f28c310a907aaf641501a8a); these are reference revisions, not an exact port baseline.
 - [LyricsX](https://github.com/ddddxxx/LyricsX) (MPL-2.0, © ddddxxx) — desktop lyrics window design reference (window configuration, screen-factor positioning; `DesktopLyrics.swift` is an independent SwiftUI implementation)
 
 ## License

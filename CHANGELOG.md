@@ -6,6 +6,13 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.1.10 - 2026-08-19
+
+### Fixed / 修复
+
+- Gray-track unblocking now probes third-party media URLs with Range requests, falls back when a provider candidate fails, handles failed AVPlayer items, and tries multiple Kugou hashes
+- 灰色歌曲解锁现在会通过 Range 请求探活第三方媒体 URL，在候选音源失败时回退，处理 AVPlayer item 播放失败，并尝试多个酷狗 hash
+
 ## 0.1.9 - 2026-08-17
 
 ### Fixed / 修复

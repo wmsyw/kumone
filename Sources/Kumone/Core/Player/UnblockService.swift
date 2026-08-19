@@ -12,6 +12,7 @@ import os.log
 /// 3. kugou  — fuzzy search + duration match, tracker URL
 enum UnblockService {
     private static let log = Logger(subsystem: "im.missuo.kumone", category: "unblock")
+    private static let probeLimit = 8_192
 
     struct Resolved {
         let url: URL
@@ -19,129 +20,232 @@ enum UnblockService {
     }
 
     static func resolve(_ track: Track) async -> Resolved? {
-        if let url = await pyncmd(track) {
-            return Resolved(url: url, source: "pyncmd")
-        }
-        if let url = await kuwo(track) {
-            return Resolved(url: url, source: String(localized: "酷我音乐"))
-        }
-        if let url = await kugou(track) {
-            return Resolved(url: url, source: String(localized: "酷狗音乐"))
+        let providers: [(name: String, source: String, candidates: () async -> [URL])] = [
+            ("pyncmd", "pyncmd", { await pyncmd(track) }),
+            ("kuwo", String(localized: "酷我音乐"), { await kuwo(track) }),
+            ("kugou", String(localized: "酷狗音乐"), { await kugou(track) }),
+        ]
+        for (provider, source, fetchCandidates) in providers {
+            let candidates = await fetchCandidates()
+            if candidates.isEmpty {
+                log.error("\(provider, privacy: .public) returned no candidates")
+            }
+            for (index, url) in candidates.enumerated() {
+                if await probe(url, targetDurationMS: track.durationMS, provider: provider) {
+                    return Resolved(url: url, source: source)
+                }
+                log.error("\(provider, privacy: .public) rejected candidate \(index + 1)")
+            }
         }
         return nil
     }
 
     private static func keyword(for track: Track) -> String {
-        "\(track.name) \(track.artists.first?.name ?? "")"
+        ([track.name] + track.artists.map(\.name)).joined(separator: " ")
             .trimmingCharacters(in: .whitespaces)
     }
 
-    /// UNM's `select`: first of the top 5 within ±5 s of the target duration, else the first.
-    private static func selectMatch<T>(_ list: [T], durationMS: Int,
-                                       duration: (T) -> Int) -> T? {
-        if let match = list.prefix(5).first(where: {
-            duration($0) > 0 && abs(duration($0) - durationMS) < 5000
-        }) {
-            return match
-        }
-        return list.first
-    }
-
-    private static func get(_ urlString: String, userAgent: String = "Mozilla/5.0") async -> Data? {
-        guard let url = URL(string: urlString) else { return nil }
+    private static func get(
+        _ string: String, provider: String,
+        userAgent: String = "Mozilla/5.0"
+    ) async -> Data? {
+        guard let url = URL(string: string) else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? false
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                (200..<300).contains(http.statusCode)
+            else {
+                log.error("\(provider, privacy: .public) request returned non-success")
+                return nil
+            }
+            return data
+        } catch {
+            log.error(
+                "\(provider, privacy: .public) request failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    private static func probe(_ url: URL, targetDurationMS: Int, provider: String) async -> Bool {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        request.setValue("bytes=0-\(probeLimit - 1)", forHTTPHeaderField: "Range")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        do {
+            let (stream, response) = try await session.bytes(for: request)
+            guard let http = response as? HTTPURLResponse,
+                (200..<300).contains(http.statusCode)
+            else { return false }
+            let range = contentRange(http.value(forHTTPHeaderField: "Content-Range"))
+            if http.statusCode == 206 {
+                guard let range, range.start == 0, range.end >= range.start,
+                    range.end < Int64(probeLimit),
+                    range.total.map({ $0 > range.end }) ?? true
+                else { return false }
+            }
+
+            var sample: [UInt8] = []
+            sample.reserveCapacity(4)
+            var consumed = 0
+            for try await byte in stream {
+                if sample.count < 4 {
+                    sample.append(byte)
+                }
+                consumed += 1
+                if consumed == probeLimit { break }
+            }
+            // A 200 response may be an origin ignoring Range. Stop its transfer before
+            // inspecting the bounded sample so the rest of the audio is never downloaded.
+            session.invalidateAndCancel()
+            guard consumed > 0 else { return false }
+            let magic =
+                (sample.count >= 3 && sample[0...2].elementsEqual([0x49, 0x44, 0x33]))
+                || (sample.count >= 2 && sample[0] == 0xff && sample[1] & 0xe0 == 0xe0)
+                || (sample.count >= 4 && sample.elementsEqual([0x66, 0x4c, 0x61, 0x43]))
+            guard http.mimeType?.lowercased().hasPrefix("audio/") == true || magic else { return false }
+            let total =
+                range?.total
+                ?? (http.statusCode == 200 && http.expectedContentLength > 0
+                    ? http.expectedContentLength : nil)
+            if let total, targetDurationMS > 0 {
+                // AVAsset may perform uncontrolled follow-up downloads. A conservative 24 kbps
+                // floor rejects Kuwo's ~11-second prompt for a normal full-length target.
+                let bytesPerSecond = total / max(Int64(targetDurationMS) / 1_000, 1)
+                guard bytesPerSecond >= 3_000 && bytesPerSecond <= 1_500_000 else { return false }
+            }
+            return true
+        } catch {
+            log.error(
+                "\(provider, privacy: .public) probe failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return false
+        }
+    }
+
+    private static func contentRange(_ value: String?) -> (start: Int64, end: Int64, total: Int64?)? {
+        guard let value else { return nil }
+        let parts = value.lowercased().split(separator: " ", maxSplits: 1)
+        guard parts.count == 2, parts[0] == "bytes" else { return nil }
+        let rangeTotal = parts[1].split(separator: "/", maxSplits: 1)
+        let bounds = rangeTotal.first?.split(separator: "-", maxSplits: 1) ?? []
+        guard rangeTotal.count == 2, bounds.count == 2,
+            let start = Int64(bounds[0]), let end = Int64(bounds[1])
         else { return nil }
-        return data
+        let total = rangeTotal[1] == "*" ? nil : Int64(rangeTotal[1])
+        guard rangeTotal[1] == "*" || total != nil else { return nil }
+        return (start, end, total)
     }
 
     // MARK: - pyncmd
 
-    private static func pyncmd(_ track: Track) async -> URL? {
-        let urlString = "https://music-api.gdstudio.xyz/api.php?types=url&source=netease&id=\(track.id)&br=320"
-        guard let data = await get(urlString),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let br = obj["br"] as? Int, br > 0,
-              let urlValue = obj["url"] as? String,
-              let url = URL(string: urlValue.replacingOccurrences(of: "http://", with: "https://"))
-        else { return nil }
-        return url
+    private static func pyncmd(_ track: Track) async -> [URL] {
+        let endpoint =
+            "https://music-api.gdstudio.xyz/api.php?types=url&source=netease&id=\(track.id)&br=320"
+        guard let data = await get(endpoint, provider: "pyncmd"),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            (object["br"] as? NSNumber)?.intValue ?? 0 > 0,
+            let value = object["url"] as? String
+        else { return [] }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+            let url = URL(string: trimmed.replacingOccurrences(of: "http://", with: "https://")),
+            url.host != nil
+        else { return [] }
+        return [url]
     }
 
     // MARK: - kuwo
 
-    private static func kuwo(_ track: Track) async -> URL? {
-        let query = keyword(for: track)
+    private static func kuwo(_ track: Track) async -> [URL] {
+        let query =
+            keyword(for: track)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let searchURL = "http://search.kuwo.cn/r.s?&correct=1&vipver=1&stype=comprehensive&encoding=utf8"
-            + "&rformat=json&mobi=1&show_copyright_off=1&searchapi=6&all=\(query)"
-        guard let data = await get(searchURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = obj["content"] as? [[String: Any]], content.count >= 2,
-              let musicpage = content[1]["musicpage"] as? [String: Any],
-              let abslist = musicpage["abslist"] as? [[String: Any]], !abslist.isEmpty
-        else { return nil }
-
-        struct KuwoSong {
-            let rid: String
-            let durationMS: Int
+        let endpoint =
+            "http://search.kuwo.cn/r.s?correct=1&vipver=1&stype=comprehensive&encoding=utf8&rformat=json&mobi=1&show_copyright_off=1&searchapi=6&all=\(query)"
+        guard let data = await get(endpoint, provider: "kuwo search"),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let content = object["content"] as? [[String: Any]], content.count >= 2,
+            let page = content[1]["musicpage"] as? [String: Any],
+            let items = page["abslist"] as? [[String: Any]]
+        else { return [] }
+        let songs: [(String, Int)] = items.prefix(5).compactMap {
+            guard let musicRID = $0["MUSICRID"] as? String,
+                let rid = musicRID.components(separatedBy: "_").last, !rid.isEmpty
+            else { return nil }
+            let duration =
+                Int(($0["DURATION"] as? String) ?? "") ?? ($0["DURATION"] as? NSNumber)?.intValue ?? 0
+            return (rid, duration * 1_000)
         }
-        let songs: [KuwoSong] = abslist.compactMap { item in
-            guard let musicrid = item["MUSICRID"] as? String,
-                  let rid = musicrid.components(separatedBy: "_").last else { return nil }
-            let duration = Int((item["DURATION"] as? String) ?? "") ?? (item["DURATION"] as? Int ?? 0)
-            return KuwoSong(rid: rid, durationMS: duration * 1000)
+        let matches = songs.filter { $0.1 > 0 && abs($0.1 - track.durationMS) < 5_000 }
+        var candidates: [URL] = []
+        for song in matches.isEmpty ? Array(songs.prefix(1)) : matches {
+            let convert =
+                "http://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(song.0)"
+            guard let body = await get(convert, provider: "kuwo convert", userAgent: "okhttp/3.10.0"),
+                let text = String(data: body, encoding: .utf8),
+                let range = text.range(of: #"http[^\s$\"]+"#, options: .regularExpression),
+                let url = URL(string: String(text[range])), url.host != nil
+            else { continue }
+            candidates.append(url)
         }
-        guard let match = selectMatch(songs, durationMS: track.durationMS, duration: \.durationMS)
-        else { return nil }
-
-        let convertURL = "http://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(match.rid)"
-        guard let body = await get(convertURL, userAgent: "okhttp/3.10.0"),
-              let text = String(data: body, encoding: .utf8),
-              let range = text.range(of: #"http[^\s$"]+"#, options: .regularExpression),
-              let url = URL(string: String(text[range]))
-        else { return nil }
-        return url
+        return candidates
     }
 
     // MARK: - kugou
 
-    private static func kugou(_ track: Track) async -> URL? {
-        let query = keyword(for: track)
+    private static func kugou(_ track: Track) async -> [URL] {
+        let query =
+            keyword(for: track)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let searchURL = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=\(query)&page=1&pagesize=10"
-        guard let data = await get(searchURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataObj = obj["data"] as? [String: Any],
-              let info = dataObj["info"] as? [[String: Any]], !info.isEmpty
-        else { return nil }
-
-        struct KugouSong {
-            let hash: String
-            let albumID: String
-            let durationMS: Int
+        let endpoint =
+            "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=\(query)&page=1&pagesize=10"
+        guard let data = await get(endpoint, provider: "kugou search"),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let dataObject = object["data"] as? [String: Any],
+            let items = dataObject["info"] as? [[String: Any]]
+        else { return [] }
+        let songs: [([String], String, Int)] = items.prefix(5).compactMap { item in
+            let hashes = ["hash", "320hash", "sqhash"].compactMap { key -> String? in
+                guard let hash = item[key] as? String,
+                    hash.range(of: #"^[0-9a-fA-F]{32}$"#, options: .regularExpression) != nil
+                else { return nil }
+                return hash
+            }
+            guard !hashes.isEmpty else { return nil }
+            let album =
+                item["album_id"] as? String ?? String((item["album_id"] as? NSNumber)?.intValue ?? 0)
+            return (hashes, album, ((item["duration"] as? NSNumber)?.intValue ?? 0) * 1_000)
         }
-        let songs: [KugouSong] = info.compactMap { item in
-            guard let hash = item["hash"] as? String else { return nil }
-            let albumID = (item["album_id"] as? String) ?? String(item["album_id"] as? Int ?? 0)
-            let duration = item["duration"] as? Int ?? 0
-            return KugouSong(hash: hash, albumID: albumID, durationMS: duration * 1000)
+        let matches = songs.filter { $0.2 > 0 && abs($0.2 - track.durationMS) < 5_000 }
+        var candidates: [URL] = []
+        var attempted = Set<String>()
+        for song in matches.isEmpty ? Array(songs.prefix(1)) : matches {
+            for hash in song.0 where attempted.insert(hash.lowercased()).inserted {
+                let key = Insecure.MD5.hash(data: Data("\(hash)kgcloudv2".utf8))
+                    .map { String(format: "%02x", $0) }.joined()
+                let tracker =
+                    "http://trackercdn.kugou.com/i/v2/?key=\(key)&hash=\(hash)&appid=1005&pid=2&cmd=25&behavior=play&album_id=\(song.1)"
+                guard let body = await get(tracker, provider: "kugou tracker"),
+                    let result = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+                else { continue }
+                let values = result["url"] as? [String] ?? (result["url"] as? String).map { [$0] } ?? []
+                candidates += values.compactMap {
+                    let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !value.isEmpty, let url = URL(string: value), url.host != nil else { return nil }
+                    return url
+                }
+            }
         }
-        guard let match = selectMatch(songs, durationMS: track.durationMS, duration: \.durationMS)
-        else { return nil }
-
-        let key = Insecure.MD5.hash(data: Data("\(match.hash)kgcloudv2".utf8))
-            .map { String(format: "%02x", $0) }.joined()
-        let trackURL = "http://trackercdn.kugou.com/i/v2/?key=\(key)&hash=\(match.hash)"
-            + "&appid=1005&pid=2&cmd=25&behavior=play&album_id=\(match.albumID)"
-        guard let body = await get(trackURL),
-              let obj2 = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let urls = obj2["url"] as? [String],
-              let first = urls.first, let url = URL(string: first)
-        else { return nil }
-        return url
+        return candidates
     }
 }

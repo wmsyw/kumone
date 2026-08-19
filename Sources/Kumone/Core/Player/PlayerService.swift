@@ -92,6 +92,10 @@ final class PlayerService {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var itemFailureObserver: NSObjectProtocol?
+    private var itemStartupTimeoutTask: Task<Void, Never>?
+    private var currentItemTerminalHandled = false
     private var resolveGeneration = 0
     private var consecutiveFailures = 0
     private var scrobbled = false
@@ -100,7 +104,8 @@ final class PlayerService {
         engine.actionAtItemEnd = .pause
         volume = UserDefaults.standard.object(forKey: "player.volume") as? Float ?? 0.8
         engine.volume = volume
-        repeatMode = UserDefaults.standard.string(forKey: "player.repeat")
+        repeatMode =
+            UserDefaults.standard.string(forKey: "player.repeat")
             .flatMap(RepeatMode.init) ?? .off
 
         timeObserver = engine.addPeriodicTimeObserver(
@@ -111,12 +116,14 @@ final class PlayerService {
                 let seconds = time.seconds
                 if seconds.isFinite, abs(seconds - self.progress) > 0.05 {
                     self.progress = seconds
+                    self.observeStartupProgress(time)
                     NowPlayingManager.shared.updateElapsed(seconds, rate: self.isPlaying ? 1 : 0)
                 }
             }
         }
 
-        statusObservation = engine.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+        statusObservation = engine.observe(\.timeControlStatus, options: [.new]) {
+            [weak self] player, _ in
             Task { @MainActor in
                 self?.isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
             }
@@ -212,8 +219,9 @@ final class PlayerService {
 
     func seek(to seconds: TimeInterval) {
         progress = seconds
-        engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero)
+        engine.seek(
+            to: CMTime(seconds: seconds, preferredTimescale: 600),
+            toleranceBefore: .zero, toleranceAfter: .zero)
         NowPlayingManager.shared.updateElapsed(seconds, rate: isPlaying ? 1 : 0)
     }
 
@@ -252,7 +260,9 @@ final class PlayerService {
             playNextList.remove(at: idx)
             return
         }
-        if let idx = queue.firstIndex(where: { $0.id == track.id }), idx != currentIndex || shuffleEnabled {
+        if let idx = queue.firstIndex(where: { $0.id == track.id }),
+            idx != currentIndex || shuffleEnabled
+        {
             queue.remove(at: idx)
         }
         if let idx = shuffledQueue.firstIndex(where: { $0.id == track.id }) {
@@ -342,9 +352,17 @@ final class PlayerService {
         startPlaying(activeQueue[idx])
     }
 
-    private func handleItemEnded() {
+    private func handleItemEnded(_ item: AVPlayerItem, generation: Int) {
+        guard generation == resolveGeneration,
+            engine.currentItem === item,
+            !currentItemTerminalHandled
+        else { return }
+        currentItemTerminalHandled = true
+        removeItemObservers()
         scrobbleIfNeeded(completed: true)
         if repeatMode == .one, !isFMMode {
+            currentItemTerminalHandled = false
+            observeItem(item, generation: generation)
             scrobbled = false
             seek(to: 0)
             engine.play()
@@ -352,6 +370,124 @@ final class PlayerService {
             return
         }
         advanceToNext(userInitiated: false)
+    }
+
+    private func handleItemStatusChange(_ item: AVPlayerItem, generation: Int) {
+        guard generation == resolveGeneration, engine.currentItem === item else { return }
+        switch item.status {
+        case .readyToPlay:
+            consecutiveFailures = 0
+            // A ready item that is already playing has completed startup. Keep the
+            // timeout alive while AVPlayer is still waiting, since some URLs report
+            // ready before ever delivering data.
+            if engine.timeControlStatus != .waitingToPlayAtSpecifiedRate
+                || progress > 0.05
+            {
+                cancelItemStartupTimeout()
+            }
+        case .failed:
+            handleItemFailure(item, generation: generation)
+        case .unknown:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleItemFailure(_ item: AVPlayerItem, generation: Int) {
+        guard generation == resolveGeneration,
+            engine.currentItem === item,
+            !currentItemTerminalHandled
+        else { return }
+        currentItemTerminalHandled = true
+        removeItemObservers()
+        engine.pause()
+        engine.replaceCurrentItem(with: nil)
+        isPlaying = false
+        isBuffering = false
+        NowPlayingManager.shared.updateElapsed(progress, rate: 0)
+
+        consecutiveFailures += 1
+        if consecutiveFailures < 5 {
+            if let track = currentTrack {
+                ToastCenter.shared.show(String(localized: "《\(track.name)》音源加载失败，已跳过"))
+            } else {
+                ToastCenter.shared.show(String(localized: "音源加载失败，已跳过"))
+            }
+            advanceToNext(userInitiated: false)
+        } else {
+            ToastCenter.shared.show(String(localized: "连续多首音源加载失败，已停止播放"))
+        }
+    }
+
+    private func observeItem(_ item: AVPlayerItem, generation: Int) {
+        removeItemObservers()
+        itemStatusObservation = item.observe(\.status, options: [.initial, .new]) {
+            [weak self] item, _ in
+            Task { @MainActor in
+                self?.handleItemStatusChange(item, generation: generation)
+            }
+        }
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main
+        ) { [weak self, weak item] _ in
+            guard let item else { return }
+            Task { @MainActor in
+                self?.handleItemFailure(item, generation: generation)
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
+        ) { [weak self, weak item] _ in
+            guard let item else { return }
+            Task { @MainActor in
+                self?.handleItemEnded(item, generation: generation)
+            }
+        }
+        scheduleItemStartupTimeout(item, generation: generation)
+    }
+
+    private func cancelItemStartupTimeout() {
+        itemStartupTimeoutTask?.cancel()
+        itemStartupTimeoutTask = nil
+    }
+
+    private func scheduleItemStartupTimeout(_ item: AVPlayerItem, generation: Int) {
+        cancelItemStartupTimeout()
+        itemStartupTimeoutTask = Task { [weak self, weak item] in
+            try? await Task.sleep(for: .seconds(12))
+            guard !Task.isCancelled, let self, let item else { return }
+            guard generation == self.resolveGeneration,
+                self.engine.currentItem === item,
+                !self.currentItemTerminalHandled
+            else { return }
+
+            let hasValidProgress = self.progress.isFinite && self.progress > 0.05
+            let isWaiting = self.engine.timeControlStatus == .waitingToPlayAtSpecifiedRate
+            guard item.status != .readyToPlay || (isWaiting && !hasValidProgress) else {
+                self.cancelItemStartupTimeout()
+                return
+            }
+            self.handleItemFailure(item, generation: generation)
+        }
+    }
+
+    private func observeStartupProgress(_ time: CMTime) {
+        guard time.isValid, time.seconds.isFinite, time.seconds > 0.05 else { return }
+        cancelItemStartupTimeout()
+    }
+
+    private func removeItemObservers() {
+        cancelItemStartupTimeout()
+        itemStatusObservation = nil
+        if let itemFailureObserver {
+            NotificationCenter.default.removeObserver(itemFailureObserver)
+            self.itemFailureObserver = nil
+        }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
     }
 
     // MARK: - Source resolution
@@ -385,7 +521,8 @@ final class PlayerService {
         let quality = SettingsManager.shared.audioQuality.rawValue
         var data = try? await NeteaseAPI.songURL(ids: [track.id], level: quality).first
         if data?.url == nil, quality != AudioQuality.standard.rawValue {
-            data = try? await NeteaseAPI.songURL(ids: [track.id], level: AudioQuality.standard.rawValue).first
+            data = try? await NeteaseAPI.songURL(ids: [track.id], level: AudioQuality.standard.rawValue)
+                .first
         }
         guard generation == resolveGeneration else { return }
 
@@ -408,10 +545,13 @@ final class PlayerService {
 
         guard let url = resolvedURL else {
             consecutiveFailures += 1
-            let reason = track.playability(privilege: nil,
-                                           isLoggedIn: AccountStore.shared.isLoggedIn,
-                                           vipType: AccountStore.shared.vipType).reason
-            ToastCenter.shared.show(String(localized: "《\(track.name)》无法播放\(reason.map { "：\($0)" } ?? "")"))
+            let reason = track.playability(
+                privilege: nil,
+                isLoggedIn: AccountStore.shared.isLoggedIn,
+                vipType: AccountStore.shared.vipType
+            ).reason
+            ToastCenter.shared.show(
+                String(localized: "《\(track.name)》无法播放\(reason.map { "：\($0)" } ?? "")"))
             if consecutiveFailures < 5 {
                 advanceToNext(userInitiated: false)
             } else {
@@ -420,7 +560,7 @@ final class PlayerService {
             return
         }
 
-        consecutiveFailures = 0
+        currentItemTerminalHandled = false
         servedQuality = data?.level
         if data?.freeTrialInfo != nil {
             isTrial = true
@@ -428,16 +568,8 @@ final class PlayerService {
         }
 
         let item = AVPlayerItem(url: url)
-        if let old = endObserver {
-            NotificationCenter.default.removeObserver(old)
-        }
-        endObserver = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.handleItemEnded()
-            }
-        }
+        observeItem(item, generation: generation)
+
         engine.replaceCurrentItem(with: item)
         engine.play()
         isPlaying = true
@@ -499,15 +631,17 @@ final class PlayerService {
 
     private func restoreState() {
         guard let data = try? Data(contentsOf: Self.stateFileURL),
-              let state = try? JSONDecoder().decode(PersistedState.self, from: data),
-              !state.queue.isEmpty else { return }
+            let state = try? JSONDecoder().decode(PersistedState.self, from: data),
+            !state.queue.isEmpty
+        else { return }
         queue = state.queue
         shuffleEnabled = state.shuffle
         if shuffleEnabled {
             shuffledQueue = queue.shuffled()
         }
         if let id = state.currentID,
-           let idx = activeQueue.firstIndex(where: { $0.id == id }) {
+            let idx = activeQueue.firstIndex(where: { $0.id == id })
+        {
             currentIndex = idx
             currentTrack = activeQueue[idx]
             duration = activeQueue[idx].duration
@@ -519,8 +653,10 @@ final class PlayerService {
     }
 
     private static var stateFileURL: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Kumone", isDirectory: true)
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[
+            0
+        ]
+        .appendingPathComponent("Kumone", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         return support.appendingPathComponent("player-state.json")
     }

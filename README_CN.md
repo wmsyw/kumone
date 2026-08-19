@@ -101,7 +101,7 @@ Kumone 是从零编写的 Swift 实现，未复制以下项目的代码，但深
 
 - [YesPlayMusic](https://github.com/qier222/YesPlayMusic)（MIT，© qier222）— 功能设计、网易云 API 端点与行为逻辑的参考
 - [kaset](https://github.com/sozercan/kaset)（MIT，© sozercan）— UI 设计系统、动效与 SwiftPM 打包方案的参考
-- [UnblockNeteaseMusic/server](https://github.com/UnblockNeteaseMusic/server)（LGPL-3.0-only）— 灰色歌曲第三方音源的接口与匹配策略参考（`UnblockService.swift` 为独立的 Swift 重新实现）
+- [UnblockNeteaseMusic/server](https://github.com/UnblockNeteaseMusic/server)（LGPL-3.0-only）— 灰色歌曲第三方音源的接口与匹配策略参考（`UnblockService.swift` 为独立的 Swift 重新实现，首次于 Kumone 提交 `d6499a6` 中实现）。审计确认的上游参考点为 `enhanced` 分支提交 [`1d64281c0fae81a4e3cf21f176706b0baa3a606d`](https://github.com/UnblockNeteaseMusic/server/commit/1d64281c0fae81a4e3cf21f176706b0baa3a606d)，以及历史可比 tag `v0.27.10` 的提交 [`df91df76c99d28522f28c310a907aaf641501a8a`](https://github.com/UnblockNeteaseMusic/server/commit/df91df76c99d28522f28c310a907aaf641501a8a)；这些 revision 仅标明参考来源，并非精确移植版本。
 - [LyricsX](https://github.com/ddddxxx/LyricsX)（MPL-2.0，© ddddxxx）— 桌面歌词窗口的设计参考（窗口配置、屏幕比例定位；`DesktopLyrics.swift` 为独立的 SwiftUI 实现）
 
 ## 协议与说明
