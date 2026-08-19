@@ -12,6 +12,8 @@ counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单
 
 - Gray-track unblocking now probes third-party media URLs with Range requests, falls back when a provider candidate fails, handles failed AVPlayer items, and tries multiple Kugou hashes
 - 灰色歌曲解锁现在会通过 Range 请求探活第三方媒体 URL，在候选音源失败时回退，处理 AVPlayer item 播放失败，并尝试多个酷狗 hash
+- pyncmd now requests the highest available audio quality by default (FLAC when available) and automatically falls back to 320 kbps when media candidates fail
+- pyncmd 默认请求最高可用音质（可用时为 FLAC）；媒体候选失败时自动降级到 320 kbps
 
 ## 0.1.9 - 2026-08-17
 

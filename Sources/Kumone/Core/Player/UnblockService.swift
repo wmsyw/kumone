@@ -112,7 +112,9 @@ enum UnblockService {
                 (sample.count >= 3 && sample[0...2].elementsEqual([0x49, 0x44, 0x33]))
                 || (sample.count >= 2 && sample[0] == 0xff && sample[1] & 0xe0 == 0xe0)
                 || (sample.count >= 4 && sample.elementsEqual([0x66, 0x4c, 0x61, 0x43]))
-            guard http.mimeType?.lowercased().hasPrefix("audio/") == true || magic else { return false }
+            guard http.mimeType?.lowercased().hasPrefix("audio/") == true || magic else {
+                return false
+            }
             let total =
                 range?.total
                 ?? (http.statusCode == 200 && http.expectedContentLength > 0
@@ -132,7 +134,8 @@ enum UnblockService {
         }
     }
 
-    private static func contentRange(_ value: String?) -> (start: Int64, end: Int64, total: Int64?)? {
+    private static func contentRange(_ value: String?) -> (start: Int64, end: Int64, total: Int64?)?
+    {
         guard let value else { return nil }
         let parts = value.lowercased().split(separator: " ", maxSplits: 1)
         guard parts.count == 2, parts[0] == "bytes" else { return nil }
@@ -148,20 +151,39 @@ enum UnblockService {
 
     // MARK: - pyncmd
 
+    private struct PyncmdCandidate {
+        let url: URL
+        let bitrate: Int
+    }
+
     private static func pyncmd(_ track: Track) async -> [URL] {
-        let endpoint =
-            "https://music-api.gdstudio.xyz/api.php?types=url&source=netease&id=\(track.id)&br=320"
-        guard let data = await get(endpoint, provider: "pyncmd"),
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            (object["br"] as? NSNumber)?.intValue ?? 0 > 0,
+        var candidates: [PyncmdCandidate] = []
+        var seen = Set<URL>()
+        for requestedBitrate in [999, 320] {
+            let endpoint =
+                "https://music-api.gdstudio.xyz/api.php?types=url&source=netease&id=\(track.id)&br=\(requestedBitrate)"
+            guard let data = await get(endpoint, provider: "pyncmd"),
+                let candidate = pyncmdCandidate(from: data)
+            else { continue }
+            log.info("pyncmd returned bitrate \(candidate.bitrate)")
+            if seen.insert(candidate.url).inserted {
+                candidates.append(candidate)
+            }
+        }
+        return candidates.map(\.url)
+    }
+
+    private static func pyncmdCandidate(from data: Data) -> PyncmdCandidate? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let bitrate = (object["br"] as? NSNumber)?.intValue, bitrate > 0,
             let value = object["url"] as? String
-        else { return [] }
+        else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
             let url = URL(string: trimmed.replacingOccurrences(of: "http://", with: "https://")),
             url.host != nil
-        else { return [] }
-        return [url]
+        else { return nil }
+        return PyncmdCandidate(url: url, bitrate: bitrate)
     }
 
     // MARK: - kuwo
@@ -183,7 +205,8 @@ enum UnblockService {
                 let rid = musicRID.components(separatedBy: "_").last, !rid.isEmpty
             else { return nil }
             let duration =
-                Int(($0["DURATION"] as? String) ?? "") ?? ($0["DURATION"] as? NSNumber)?.intValue ?? 0
+                Int(($0["DURATION"] as? String) ?? "") ?? ($0["DURATION"] as? NSNumber)?.intValue
+                ?? 0
             return (rid, duration * 1_000)
         }
         let matches = songs.filter { $0.1 > 0 && abs($0.1 - track.durationMS) < 5_000 }
@@ -191,7 +214,8 @@ enum UnblockService {
         for song in matches.isEmpty ? Array(songs.prefix(1)) : matches {
             let convert =
                 "http://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(song.0)"
-            guard let body = await get(convert, provider: "kuwo convert", userAgent: "okhttp/3.10.0"),
+            guard
+                let body = await get(convert, provider: "kuwo convert", userAgent: "okhttp/3.10.0"),
                 let text = String(data: body, encoding: .utf8),
                 let range = text.range(of: #"http[^\s$\"]+"#, options: .regularExpression),
                 let url = URL(string: String(text[range])), url.host != nil
@@ -223,7 +247,8 @@ enum UnblockService {
             }
             guard !hashes.isEmpty else { return nil }
             let album =
-                item["album_id"] as? String ?? String((item["album_id"] as? NSNumber)?.intValue ?? 0)
+                item["album_id"] as? String
+                ?? String((item["album_id"] as? NSNumber)?.intValue ?? 0)
             return (hashes, album, ((item["duration"] as? NSNumber)?.intValue ?? 0) * 1_000)
         }
         let matches = songs.filter { $0.2 > 0 && abs($0.2 - track.durationMS) < 5_000 }
@@ -238,10 +263,13 @@ enum UnblockService {
                 guard let body = await get(tracker, provider: "kugou tracker"),
                     let result = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
                 else { continue }
-                let values = result["url"] as? [String] ?? (result["url"] as? String).map { [$0] } ?? []
+                let values =
+                    result["url"] as? [String] ?? (result["url"] as? String).map { [$0] } ?? []
                 candidates += values.compactMap {
                     let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !value.isEmpty, let url = URL(string: value), url.host != nil else { return nil }
+                    guard !value.isEmpty, let url = URL(string: value), url.host != nil else {
+                        return nil
+                    }
                     return url
                 }
             }
