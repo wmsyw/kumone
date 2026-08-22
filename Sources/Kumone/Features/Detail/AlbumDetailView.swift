@@ -13,69 +13,78 @@ struct AlbumDetailView: View {
 
     @Environment(PlayerService.self) private var player
     @Environment(AccountStore.self) private var account
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: isCompact ? 16 : 20) {
                 if let album {
-                    header(album)
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 16)
-
-                    ForEach(discs, id: \.self) { disc in
-                        if discs.count > 1 {
-                            Text("Disc \(disc)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, Theme.Layout.contentInset)
-                                .padding(.top, 4)
-                        }
-                        TrackListView(
-                            tracks: tracks.filter { ($0.disc ?? "01") == disc },
-                            style: .albumTrack,
-                            source: .album(albumID)
-                        )
-                        .padding(.horizontal, Theme.Layout.contentInset - 10)
+                    if isCompact {
+                        compactHeader(album)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                    } else {
+                        regularHeader(album)
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                            .padding(.top, 16)
                     }
 
-                    footer(album)
-                        .padding(.horizontal, Theme.Layout.contentInset)
+                    TrackListView(
+                        tracks: tracks,
+                        source: .album(albumID)
+                    )
+                    .padding(.horizontal, isCompact ? 6 : Theme.Layout.contentInset - 10)
 
                     if !otherAlbums.isEmpty {
-                        Shelf(title: "\(album.artist?.name ?? String(localized: "该歌手"))的其他专辑") {
-                            ForEach(otherAlbums) { other in
-                                NavigationLink(value: Destination.album(other.id)) {
-                                    CoverCardBody(
-                                        coverURL: other.picUrl?.resizedImageURL(384),
-                                        title: other.name,
-                                        subtitle: other.publishYear
-                                    )
+                        SectionHeader(title: "该歌手的其他专辑")
+                            .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+                            .padding(.top, 12)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
+                                ForEach(otherAlbums) { item in
+                                    NavigationLink(value: Destination.album(item.id)) {
+                                        CoverCardBody(
+                                            coverURL: item.picUrl?.resizedImageURL(384),
+                                            title: item.name,
+                                            subtitle: Formatters.date(fromMS: item.publishTime)
+                                        )
+                                    }
+                                    .buttonStyle(.interactiveCard)
                                 }
-                                .buttonStyle(.interactiveCard)
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
                             }
                         }
                     }
                 } else if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 400)
+                    loadingHeader
                 } else if let errorMessage {
                     ErrorStateView(message: errorMessage) {
                         Task { await load() }
                     }
                     .frame(minHeight: 400)
                 }
-                Color.clear.frame(height: 8)
+
+                Color.clear.frame(height: isCompact ? 80 : 8)
             }
         }
+        #if os(macOS)
         .navigationTitle(album?.name ?? String(localized: "专辑"))
+        #else
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task(id: albumID) {
             await load()
         }
-    }
-
-    private var discs: [String] {
-        var seen = Set<String>()
-        return tracks.map { $0.disc ?? "01" }.filter { seen.insert($0).inserted }
     }
 
     private func load() async {
@@ -99,7 +108,109 @@ struct AlbumDetailView: View {
         }
     }
 
-    private func header(_ album: AlbumDetail) -> some View {
+    // MARK: - Compact Header
+
+    private func compactHeader(_ album: AlbumDetail) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                CachedAsyncImage(url: album.picUrl?.resizedImageURL(384))
+                    .frame(width: 120, height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
+                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(album.name)
+                        .font(.system(size: 16, weight: .bold))
+                        .lineLimit(3)
+
+                    if let artist = album.artist {
+                        NavigationLink(value: Destination.artist(artist.id)) {
+                            Text(artist.name)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.accent)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Text("\(tracks.count) 首 · \(Formatters.date(fromMS: album.publishTime))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let description = album.description, !description.isEmpty {
+                Button {
+                    showFullDescription = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(description.replacingOccurrences(of: "\n", with: " "))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showFullDescription) {
+                    NavigationStack {
+                        ScrollView {
+                            Text(description)
+                                .font(.system(size: 14))
+                                .padding(20)
+                        }
+                        .navigationTitle("专辑简介")
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                        .toolbar {
+                            ToolbarItem(placement: .primaryAction) {
+                                Button("完成") { showFullDescription = false }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Compact Action Bar
+            HStack(spacing: 10) {
+                Button {
+                    player.play(tracks: tracks, source: .album(albumID))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                        Text("播放全部 (\(tracks.count))")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(Theme.accentGradient, in: Capsule())
+                    .shadow(color: Theme.accent.opacity(0.3), radius: 6, y: 2)
+                }
+                .buttonStyle(.pressable)
+
+                if account.isLoggedIn {
+                    Button {
+                        toggleSubscribe()
+                    } label: {
+                        Image(systemName: isSubscribed ? "checkmark" : "plus")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(isSubscribed ? Theme.accent : .primary)
+                            .frame(width: 38, height: 38)
+                            .background(.primary.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.pressable)
+                }
+            }
+        }
+    }
+
+    // MARK: - Regular Header
+
+    private func regularHeader(_ album: AlbumDetail) -> some View {
         HStack(alignment: .bottom, spacing: 24) {
             CachedAsyncImage(url: album.picUrl?.resizedImageURL(512))
                 .frame(width: 200, height: 200)
@@ -186,19 +297,9 @@ struct AlbumDetailView: View {
         .frame(height: 210)
     }
 
-    private func footer(_ album: AlbumDetail) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("发行于 \(Formatters.date(fromMS: album.publishTime))")
-            if let company = album.company, !company.isEmpty {
-                Text(company)
-            }
-        }
-        .font(.system(size: 11.5))
-        .foregroundStyle(.tertiary)
-    }
-
     private var totalDuration: String {
-        Formatters.longDuration(tracks.reduce(0) { $0 + $1.duration })
+        let totalMS = tracks.reduce(into: 0) { $0 += $1.durationMS }
+        return Formatters.longDuration(TimeInterval(totalMS) / 1000)
     }
 
     private func toggleSubscribe() {
@@ -211,5 +312,21 @@ struct AlbumDetailView: View {
                 ToastCenter.shared.show(error.localizedDescription)
             }
         }
+    }
+
+    private var loadingHeader: some View {
+        HStack(spacing: 24) {
+            RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
+                .fill(.primary.opacity(0.05))
+                .frame(width: isCompact ? 120 : 200, height: isCompact ? 120 : 200)
+            VStack(alignment: .leading, spacing: 10) {
+                RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.08)).frame(width: 60, height: 14)
+                RoundedRectangle(cornerRadius: 6).fill(.primary.opacity(0.1)).frame(width: 180, height: 24)
+                RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.06)).frame(width: 120, height: 14)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+        .padding(.top, 16)
     }
 }

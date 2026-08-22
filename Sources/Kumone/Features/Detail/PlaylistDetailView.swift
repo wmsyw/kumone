@@ -73,6 +73,7 @@ struct PlaylistDetailView: View {
     @State private var model: PlaylistDetailViewModel
     @Environment(PlayerService.self) private var player
     @Environment(AccountStore.self) private var account
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showFullDescription = false
 
     init(playlistID: Int, isLikedList: Bool = false) {
@@ -85,13 +86,27 @@ struct PlaylistDetailView: View {
         model.detail?.creator?.userId == account.profile?.userId
     }
 
+    private var isCompact: Bool {
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: isCompact ? 16 : 20) {
                 if let detail = model.detail {
-                    header(detail)
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 16)
+                    if isCompact {
+                        compactHeader(detail)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                    } else {
+                        regularHeader(detail)
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                            .padding(.top, 16)
+                    }
 
                     TrackListView(
                         tracks: model.filteredTracks,
@@ -100,7 +115,7 @@ struct PlaylistDetailView: View {
                         removableFromPlaylistID: isOwnPlaylist ? playlistID : nil,
                         onRemoved: { model.remove($0) }
                     )
-                    .padding(.horizontal, Theme.Layout.contentInset - 10)
+                    .padding(.horizontal, isCompact ? 6 : Theme.Layout.contentInset - 10)
 
                     if model.isLoadingMore {
                         HStack {
@@ -118,18 +133,135 @@ struct PlaylistDetailView: View {
                     }
                     .frame(minHeight: 400)
                 }
-                Color.clear.frame(height: 8)
+                Color.clear.frame(height: isCompact ? 80 : 8)
             }
         }
+        #if os(macOS)
         .navigationTitle(model.detail?.name ?? String(localized: "歌单"))
+        #else
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task(id: playlistID) {
             await model.load()
         }
     }
 
-    // MARK: - Header
+    // MARK: - Compact (Mobile) Header
 
-    private func header(_ detail: PlaylistDetail) -> some View {
+    private func compactHeader(_ detail: PlaylistDetail) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                CachedAsyncImage(url: detail.coverImgUrl?.resizedImageURL(384))
+                    .frame(width: 120, height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
+                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(isLikedList ? String(localized: "我喜欢的音乐") : detail.name)
+                        .font(.system(size: 16, weight: .bold))
+                        .lineLimit(3)
+
+                    if let creator = detail.creator, !isLikedList {
+                        HStack(spacing: 6) {
+                            CachedAsyncImage(url: creator.avatarUrl?.resizedImageURL(48), animated: false)
+                                .frame(width: 18, height: 18)
+                                .clipShape(Circle())
+                            Text(creator.nickname)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Text("\(detail.trackCount) 首 · \(Formatters.playCount(detail.playCount)) 次播放")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let description = detail.description, !description.isEmpty {
+                Button {
+                    showFullDescription = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(description.replacingOccurrences(of: "\n", with: " "))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showFullDescription) {
+                    NavigationStack {
+                        ScrollView {
+                            Text(description)
+                                .font(.system(size: 14))
+                                .padding(20)
+                        }
+                        .navigationTitle("歌单简介")
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                        .toolbar {
+                            ToolbarItem(placement: .primaryAction) {
+                                Button("完成") { showFullDescription = false }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Compact Action Bar
+            HStack(spacing: 10) {
+                Button {
+                    player.play(tracks: playable, source: .playlist(playlistID))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                        Text("播放全部 (\(playable.count))")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(Theme.accentGradient, in: Capsule())
+                    .shadow(color: Theme.accent.opacity(0.3), radius: 6, y: 2)
+                }
+                .buttonStyle(.pressable)
+
+                if isLikedList {
+                    Button {
+                        startHeartbeat()
+                    } label: {
+                        Image(systemName: "heart.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 38, height: 38)
+                            .background(.primary.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.pressable)
+                } else if !isOwnPlaylist, account.isLoggedIn {
+                    Button {
+                        toggleSubscribe(detail)
+                    } label: {
+                        Image(systemName: detail.subscribed ? "checkmark" : "plus")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(detail.subscribed ? Theme.accent : .primary)
+                            .frame(width: 38, height: 38)
+                            .background(.primary.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.pressable)
+                }
+            }
+        }
+    }
+
+    // MARK: - Regular (Desktop / iPad) Header
+
+    private func regularHeader(_ detail: PlaylistDetail) -> some View {
         HStack(alignment: .bottom, spacing: 24) {
             CachedAsyncImage(url: detail.coverImgUrl?.resizedImageURL(512))
                 .frame(width: 200, height: 200)
@@ -249,8 +381,6 @@ struct PlaylistDetailView: View {
     }
 
     private var playable: [Track] {
-        // With unblock enabled, gray tracks resolve from third-party sources —
-        // keep them in the play-all queue (mirrors TrackListView).
         if SettingsManager.shared.enableUnblock { return model.tracks }
         return model.tracks.filter {
             $0.playability(privilege: model.privileges[$0.id],
@@ -279,10 +409,9 @@ struct PlaylistDetailView: View {
     private func toggleSubscribe(_ detail: PlaylistDetail) {
         Task {
             do {
-                try await NeteaseAPI.subscribePlaylist(id: playlistID, subscribe: !detail.subscribed)
-                await model.load()
+                try await NeteaseAPI.subscribePlaylist(id: detail.id, subscribe: !detail.subscribed)
+                model.detail?.subscribed.toggle()
                 await account.refreshLibrary()
-                ToastCenter.shared.show(detail.subscribed ? String(localized: "已取消收藏") : String(localized: "已收藏歌单"))
             } catch {
                 ToastCenter.shared.show(error.localizedDescription)
             }
@@ -290,30 +419,18 @@ struct PlaylistDetailView: View {
     }
 
     private var loadingHeader: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .bottom, spacing: 24) {
-                SkeletonView(cornerRadius: Theme.Radius.large)
-                    .frame(width: 200, height: 200)
-                VStack(alignment: .leading, spacing: 10) {
-                    SkeletonView(cornerRadius: 4).frame(width: 60, height: 12)
-                    SkeletonView(cornerRadius: 4).frame(width: 280, height: 28)
-                    SkeletonView(cornerRadius: 4).frame(width: 180, height: 12)
-                    Spacer()
-                    SkeletonView(cornerRadius: 16).frame(width: 110, height: 34)
-                }
-                .frame(height: 200)
+        HStack(spacing: 24) {
+            RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
+                .fill(.primary.opacity(0.05))
+                .frame(width: isCompact ? 120 : 200, height: isCompact ? 120 : 200)
+            VStack(alignment: .leading, spacing: 10) {
+                RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.08)).frame(width: 80, height: 14)
+                RoundedRectangle(cornerRadius: 6).fill(.primary.opacity(0.1)).frame(width: 220, height: 24)
+                RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.06)).frame(width: 140, height: 12)
             }
-            ForEach(0..<8, id: \.self) { _ in
-                HStack(spacing: 12) {
-                    SkeletonView(cornerRadius: 6).frame(width: 42, height: 42)
-                    VStack(alignment: .leading, spacing: 6) {
-                        SkeletonView(cornerRadius: 4).frame(width: 200, height: 12)
-                        SkeletonView(cornerRadius: 4).frame(width: 120, height: 10)
-                    }
-                    Spacer()
-                }
-            }
+            Spacer()
         }
-        .padding(Theme.Layout.contentInset)
+        .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+        .padding(.top, 16)
     }
 }

@@ -54,7 +54,7 @@ SwiftUI 编写 · 直连网易云真实 API · Sparkle 自动更新
 
 ## 安装
 
-要求 Apple Silicon Mac、macOS 15+。
+要求 macOS 15+（Universal：Apple Silicon 与 Intel 均支持）。
 
 ### Homebrew
 

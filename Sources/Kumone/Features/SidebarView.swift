@@ -7,7 +7,7 @@ struct SidebarView: View {
     @Environment(AccountStore.self) private var account
     @State private var showNewPlaylist = false
     @State private var newPlaylistName = ""
-    @State private var avatarImage: NSImage?
+    @State private var avatarImage: PlatformImage?
 
     var body: some View {
         List {
@@ -179,7 +179,7 @@ struct SidebarView: View {
 
 private struct AccountChip: View {
     let profile: UserProfile
-    let avatarImage: NSImage?
+    let avatarImage: PlatformImage?
 
     @Environment(AccountStore.self) private var account
     @State private var showPopover = false
@@ -227,7 +227,7 @@ private struct AccountChip: View {
     @ViewBuilder
     private func avatar(diameter: CGFloat) -> some View {
         if let avatarImage {
-            Image(nsImage: avatarImage.circularCropped(diameter: diameter))
+            Image(platformImage: avatarImage.circularCropped(diameter: diameter))
                 .resizable()
                 .frame(width: diameter, height: diameter)
         } else {

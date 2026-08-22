@@ -54,7 +54,7 @@ Built with SwiftUI · Talks directly to NetEase's real API · Sparkle auto-updat
 
 ## Installation
 
-Requires an Apple Silicon Mac running macOS 15+.
+Requires macOS 15+ (Universal: Apple Silicon and Intel).
 
 ### Homebrew
 

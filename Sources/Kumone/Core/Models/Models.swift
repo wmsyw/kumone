@@ -97,7 +97,7 @@ struct PlaylistDetail: Decodable, Hashable {
     let trackCount: Int
     let playCount: Int
     let subscribedCount: Int
-    let subscribed: Bool
+    var subscribed: Bool
     let trackIds: [TrackIDRef]
     let tracks: [Track]
     let specialType: Int

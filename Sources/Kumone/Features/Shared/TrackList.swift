@@ -25,19 +25,28 @@ struct TrackRow: View {
 
     @Environment(PlayerService.self) private var player
     @Environment(AccountStore.self) private var account
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isHovering = false
     @State private var showAddToPlaylist = false
 
     private var isCurrent: Bool { player.currentTrack?.id == track.id }
     private var isPlayable: Bool { playability == .playable }
 
+    private var isCompact: Bool {
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: isCompact ? 10 : 12) {
             leadingIndicator
 
             if style != .albumTrack {
                 CachedAsyncImage(url: track.album.picUrl?.resizedImageURL(96), animated: false)
-                    .frame(width: 42, height: 42)
+                    .frame(width: isCompact ? 38 : 42, height: isCompact ? 38 : 42)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
             }
 
@@ -47,7 +56,7 @@ struct TrackRow: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(isCurrent ? Theme.accent : .primary)
                         .lineLimit(1)
-                    if let subtitle = track.subtitle {
+                    if let subtitle = track.subtitle, !isCompact {
                         Text("(\(subtitle))")
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
@@ -64,7 +73,7 @@ struct TrackRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if style == .full {
+            if style == .full && !isCompact {
                 NavigationLink(value: Destination.album(track.album.id)) {
                     Text(track.album.name)
                         .font(.system(size: 12))
@@ -92,11 +101,11 @@ struct TrackRow: View {
 
             likeAndDuration
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, isCompact ? 6 : 10)
+        .padding(.vertical, isCompact ? 4 : 5)
         // Fixed row height keeps lazy-stack height estimation exact,
         // preventing scroll-offset jumps in long lists (#3).
-        .frame(height: style == .albumTrack ? 46 : 52)
+        .frame(height: style == .albumTrack ? (isCompact ? 44 : 46) : (isCompact ? 48 : 52))
         .opacity(isPlayable ? 1 : 0.45)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous)
@@ -106,9 +115,15 @@ struct TrackRow: View {
         .onHover { hovering in
             withAnimation(AppAnimation.quick) { isHovering = hovering }
         }
+        #if os(macOS)
         .onTapGesture(count: 2) {
             if isPlayable { onPlay() }
         }
+        #else
+        .onTapGesture {
+            if isPlayable { onPlay() }
+        }
+        #endif
         .contextMenu { contextMenuItems }
         .sheet(isPresented: $showAddToPlaylist) {
             AddToPlaylistSheet(track: track)
@@ -196,10 +211,7 @@ struct TrackRow: View {
         }
         Divider()
         Button("复制链接") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(
-                "https://music.163.com/#/song?id=\(track.id)", forType: .string
-            )
+            Platform.copyToPasteboard(string: "https://music.163.com/#/song?id=\(track.id)")
             ToastCenter.shared.show(String(localized: "链接已复制"))
         }
     }

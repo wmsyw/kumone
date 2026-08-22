@@ -28,7 +28,7 @@ struct FMView: View {
 
     private var backdrop: some View {
         ZStack {
-            Color(nsColor: .windowBackgroundColor)
+            Platform.windowBackgroundColor
             if let cover = track?.album.picUrl?.resizedImageURL(384) {
                 CachedAsyncImage(url: cover)
                     .scaledToFill()
@@ -37,7 +37,7 @@ struct FMView: View {
                     .saturation(1.4)
             }
             LinearGradient(
-                colors: [.clear, Color(nsColor: .windowBackgroundColor).opacity(0.6)],
+                colors: [.clear, Platform.windowBackgroundColor.opacity(0.6)],
                 startPoint: .top, endPoint: .bottom
             )
         }

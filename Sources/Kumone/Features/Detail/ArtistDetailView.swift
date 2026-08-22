@@ -9,92 +9,119 @@ struct ArtistDetailView: View {
     @State private var epsAndSingles: [AlbumSummary] = []
     @State private var similar: [ArtistSummary] = []
     @State private var isFollowed = false
-    @State private var showAllSongs = false
     @State private var isLoading = true
     @State private var errorMessage: String?
 
     @Environment(PlayerService.self) private var player
     @Environment(AccountStore.self) private var account
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: isCompact ? 16 : 26) {
                 if let artist {
-                    header(artist)
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 16)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionHeader(title: "热门歌曲")
+                    if isCompact {
+                        compactHeader(artist)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                    } else {
+                        regularHeader(artist)
                             .padding(.horizontal, Theme.Layout.contentInset)
+                            .padding(.top, 16)
+                    }
+
+                    if !hotSongs.isEmpty {
+                        SectionHeader(title: "热门单曲")
+                            .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+
                         TrackListView(
-                            tracks: Array(hotSongs.prefix(showAllSongs ? 50 : 10)),
+                            tracks: hotSongs,
                             style: .compact,
                             source: .artist(artistID)
                         )
-                        .padding(.horizontal, Theme.Layout.contentInset - 10)
-                        if hotSongs.count > 10 {
-                            Button(showAllSongs ? String(localized: "收起") : String(localized: "查看更多")) {
-                                withAnimation(AppAnimation.standard) {
-                                    showAllSongs.toggle()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                        }
+                        .padding(.horizontal, isCompact ? 6 : Theme.Layout.contentInset - 10)
                     }
 
                     if !albums.isEmpty {
-                        Shelf(title: "专辑") {
-                            ForEach(albums) { album in
-                                albumCard(album)
+                        SectionHeader(title: "专辑")
+                            .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
+                                ForEach(albums) { album in
+                                    albumCard(album)
+                                }
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
                             }
                         }
                     }
 
                     if !epsAndSingles.isEmpty {
-                        Shelf(title: "EP 与单曲") {
-                            ForEach(epsAndSingles) { album in
-                                albumCard(album)
+                        SectionHeader(title: "EP 与单曲")
+                            .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
+                                ForEach(epsAndSingles) { album in
+                                    albumCard(album)
+                                }
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
                             }
                         }
                     }
 
                     if !similar.isEmpty {
-                        Shelf(title: "相似歌手") {
-                            ForEach(similar.prefix(10)) { other in
-                                NavigationLink(value: Destination.artist(other.id)) {
-                                    VStack(spacing: 10) {
-                                        CachedAsyncImage(url: other.picUrl?.resizedImageURL(256))
-                                            .frame(width: 128, height: 128)
-                                            .clipShape(Circle())
-                                        Text(other.name)
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
+                        SectionHeader(title: "相似歌手")
+                            .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
+                                ForEach(similar) { sim in
+                                    NavigationLink(value: Destination.artist(sim.id)) {
+                                        VStack(spacing: 8) {
+                                            CachedAsyncImage(url: sim.picUrl?.resizedImageURL(256))
+                                                .frame(width: isCompact ? 80 : 100, height: isCompact ? 80 : 100)
+                                                .clipShape(Circle())
+                                            Text(sim.name)
+                                                .font(.system(size: 12, weight: .medium))
+                                                .lineLimit(1)
+                                        }
+                                        .frame(width: isCompact ? 80 : 100)
                                     }
-                                    .frame(width: 140)
-                                    .contentShape(Rectangle())
+                                    .buttonStyle(.interactiveCard)
                                 }
-                                .buttonStyle(.interactiveCard)
+                                Spacer().frame(width: (isCompact ? 16 : Theme.Layout.contentInset) - 16)
                             }
                         }
                     }
                 } else if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 400)
+                    loadingHeader
                 } else if let errorMessage {
                     ErrorStateView(message: errorMessage) {
                         Task { await load() }
                     }
                     .frame(minHeight: 400)
                 }
-                Color.clear.frame(height: 8)
+
+                Color.clear.frame(height: isCompact ? 80 : 8)
             }
         }
+        #if os(macOS)
         .navigationTitle(artist?.name ?? String(localized: "歌手"))
+        #else
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task(id: artistID) {
             await load()
         }
@@ -123,7 +150,69 @@ struct ArtistDetailView: View {
         }
     }
 
-    private func header(_ artist: ArtistSummary) -> some View {
+    // MARK: - Compact Header
+
+    private func compactHeader(_ artist: ArtistSummary) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                CachedAsyncImage(url: artist.picUrl?.resizedImageURL(384))
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(artist.name)
+                        .font(.system(size: 18, weight: .bold))
+                        .lineLimit(2)
+                    if !artist.alias.isEmpty {
+                        Text(artist.alias.joined(separator: " / "))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Text("\(artist.musicSize) 首歌曲 · \(artist.albumSize) 张专辑")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Compact Action Bar
+            HStack(spacing: 10) {
+                Button {
+                    player.play(tracks: hotSongs, source: .artist(artistID))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                        Text("播放热门")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(Theme.accentGradient, in: Capsule())
+                    .shadow(color: Theme.accent.opacity(0.3), radius: 6, y: 2)
+                }
+                .buttonStyle(.pressable)
+
+                if account.isLoggedIn {
+                    Button {
+                        toggleFollow()
+                    } label: {
+                        Image(systemName: isFollowed ? "checkmark" : "plus")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(isFollowed ? Theme.accent : .primary)
+                            .frame(width: 38, height: 38)
+                            .background(.primary.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.pressable)
+                }
+            }
+        }
+    }
+
+    // MARK: - Regular Header
+
+    private func regularHeader(_ artist: ArtistSummary) -> some View {
         HStack(alignment: .center, spacing: 28) {
             CachedAsyncImage(url: artist.picUrl?.resizedImageURL(512))
                 .frame(width: 180, height: 180)
@@ -202,5 +291,20 @@ struct ArtistDetailView: View {
                 ToastCenter.shared.show(error.localizedDescription)
             }
         }
+    }
+
+    private var loadingHeader: some View {
+        HStack(spacing: 24) {
+            Circle()
+                .fill(.primary.opacity(0.05))
+                .frame(width: isCompact ? 100 : 180, height: isCompact ? 100 : 180)
+            VStack(alignment: .leading, spacing: 10) {
+                RoundedRectangle(cornerRadius: 6).fill(.primary.opacity(0.1)).frame(width: 160, height: 26)
+                RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.06)).frame(width: 110, height: 14)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, isCompact ? 16 : Theme.Layout.contentInset)
+        .padding(.top, 16)
     }
 }

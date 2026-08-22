@@ -6,6 +6,35 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.2.0 - 2026-08-21
+
+### Added / 新增
+
+- iOS and iPadOS support: cross-platform core (KumoneCore), adaptive layouts for compact and regular widths, and an `ios/` app workspace (#5, contributed by @MikeChongCan)
+- Every release now ships an unsigned iOS IPA alongside the macOS build (sideload with your own signing)
+- The macOS build is now Universal 2 — Intel Macs are supported (#7)
+- iOS 与 iPadOS 支持：跨平台核心（KumoneCore）、紧凑/常规宽度自适应布局，以及 `ios/` 应用工程（#5，由 @MikeChongCan 贡献）
+- 每次发版现在会同时附带无签名的 iOS IPA（自行签名侧载）
+- macOS 构建改为 Universal 2，支持 Intel Mac（#7）
+
+### Fixed / 修复
+
+- Toolbar availability check missed the iOS clause, breaking the iOS build against the iOS 18 target
+- Player bar's bottom fade no longer bleeds over the sidebar's corner
+- The iOS app-shell Xcode project was silently excluded by .gitignore; it is now reconstructed via XcodeGen (`ios/project.yml`) and checked in, with the missing launch-screen key added so the app no longer letterboxes
+- The sidebar divider's resize cursor no longer leaks onto the immersive now-playing page (#6)
+- 工具栏可用性判断缺少 iOS 条件，导致 iOS 18 目标编译失败的问题
+- 播放条底部渐变不再溢出覆盖侧边栏底角
+- iOS app 壳工程曾被 .gitignore 静默排除；现改由 XcodeGen（`ios/project.yml`）生成并入库，并补上缺失的启动屏声明，App 不再上下黑边
+- 侧边栏分隔条的拖拽光标不再泄漏到沉浸播放页上（#6）
+
+### Improved / 改进
+
+- Player chrome clearance is now derived from shared layout constants instead of scattered magic numbers
+- The Home page no longer shows a sign-in card for anonymous users; the login entry lives only in the sidebar / 我的 tab
+- 播放条净空高度改由共享布局常量推导，替代分散的魔数
+- 未登录时首页不再显示登录卡片，登录入口仅保留在侧边栏 / 「我的」中
+
 ## 0.1.10 - 2026-08-19
 
 ### Fixed / 修复

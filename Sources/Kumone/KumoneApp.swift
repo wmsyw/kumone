@@ -1,7 +1,7 @@
 import SwiftUI
 
-@main
-struct KumoneApp: App {
+#if os(macOS)
+public struct KumoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @State private var player = PlayerService.shared
@@ -9,7 +9,9 @@ struct KumoneApp: App {
     @State private var settings = SettingsManager.shared
     @State private var toasts = ToastCenter.shared
 
-    var body: some Scene {
+    public init() {}
+
+    public var body: some Scene {
         WindowGroup("Kumone", id: "main") {
             MainWindow()
                 .environment(player)
@@ -120,3 +122,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 }
+#endif

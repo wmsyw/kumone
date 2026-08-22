@@ -30,10 +30,12 @@ struct SettingsView: View {
                     }
                 }
                 Toggle("显示歌词翻译", isOn: $settings.showLyricsTranslation)
+                #if os(macOS)
                 Toggle("桌面歌词", isOn: $settings.showDesktopLyrics)
                 Text("在屏幕上悬浮显示当前歌词，可拖动调整位置")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                #endif
             }
 
             Section("存储") {
@@ -63,7 +65,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        #if os(macOS)
         .frame(width: 440, height: 480)
+        #endif
         .task { updateCacheSize() }
     }
 

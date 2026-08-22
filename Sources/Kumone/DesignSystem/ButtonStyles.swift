@@ -6,9 +6,12 @@ struct InteractiveCardStyle: ButtonStyle {
     var hoverScale: CGFloat = 1.02
     var pressScale: CGFloat = 0.98
 
+    #if os(macOS)
     @State private var isHovering = false
+    #endif
 
     func makeBody(configuration: Configuration) -> some View {
+        #if os(macOS)
         configuration.label
             .scaleEffect(configuration.isPressed ? pressScale : (isHovering ? hoverScale : 1.0))
             .shadow(
@@ -20,6 +23,10 @@ struct InteractiveCardStyle: ButtonStyle {
             .animation(AppAnimation.spring, value: configuration.isPressed)
             .animation(AppAnimation.spring, value: isHovering)
             .onHover { isHovering = $0 }
+        #else
+        configuration.label
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+        #endif
     }
 }
 
@@ -28,9 +35,12 @@ struct InteractiveRowStyle: ButtonStyle {
     var cornerRadius: CGFloat = Theme.Radius.standard
     var hoverColor: Color = .primary.opacity(0.06)
 
+    #if os(macOS)
     @State private var isHovering = false
+    #endif
 
     func makeBody(configuration: Configuration) -> some View {
+        #if os(macOS)
         configuration.label
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -40,6 +50,15 @@ struct InteractiveRowStyle: ButtonStyle {
             .animation(AppAnimation.quick, value: configuration.isPressed)
             .animation(AppAnimation.quick, value: isHovering)
             .onHover { isHovering = $0 }
+        #else
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(configuration.isPressed ? hoverColor : .clear)
+            )
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(AppAnimation.quick, value: configuration.isPressed)
+        #endif
     }
 }
 
@@ -59,9 +78,12 @@ struct PressableButtonStyle: ButtonStyle {
 struct ChipButtonStyle: ButtonStyle {
     var isSelected: Bool
 
+    #if os(macOS)
     @State private var isHovering = false
+    #endif
 
     func makeBody(configuration: Configuration) -> some View {
+        #if os(macOS)
         configuration.label
             .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
             .padding(.horizontal, 12)
@@ -78,6 +100,22 @@ struct ChipButtonStyle: ButtonStyle {
             .animation(AppAnimation.spring, value: configuration.isPressed)
             .animation(AppAnimation.spring, value: isHovering)
             .onHover { isHovering = $0 }
+        #else
+        configuration.label
+            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(
+                    isSelected
+                        ? AnyShapeStyle(Theme.accent)
+                        : AnyShapeStyle(.primary.opacity(0.06))
+                )
+            )
+            .foregroundStyle(isSelected ? .white : .primary)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(AppAnimation.spring, value: configuration.isPressed)
+        #endif
     }
 }
 

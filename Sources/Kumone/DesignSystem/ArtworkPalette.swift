@@ -1,4 +1,4 @@
-import AppKit
+import CoreGraphics
 import SwiftUI
 
 /// Dominant-color extraction for artwork-driven backgrounds
@@ -17,7 +17,7 @@ enum ArtworkPalette {
     private static var cache: [String: ArtworkColors] = [:]
 
     @MainActor
-    static func extract(from image: NSImage, cacheKey: String) -> ArtworkColors {
+    static func extract(from image: PlatformImage, cacheKey: String) -> ArtworkColors {
         if let cached = cache[cacheKey] {
             return cached
         }
@@ -27,27 +27,59 @@ enum ArtworkPalette {
         return colors
     }
 
-    private static func compute(from image: NSImage) -> ArtworkColors {
+    private static func compute(from image: PlatformImage) -> ArtworkColors {
+        guard let cgImage = image.cgImageRef else { return .fallback }
         let size = 10
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * size
+        let bitsPerComponent = 8
+        var rawData = [UInt8](repeating: 0, count: size * size * bytesPerPixel)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+
+        guard let context = CGContext(
+            data: &rawData,
+            width: size,
+            height: size,
+            bitsPerComponent: bitsPerComponent,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
         ) else { return .fallback }
 
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-        image.draw(in: NSRect(x: 0, y: 0, width: size, height: size),
-                   from: .zero, operation: .copy, fraction: 1)
-        NSGraphicsContext.restoreGraphicsState()
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
 
         var samples: [(h: CGFloat, s: CGFloat, b: CGFloat, weight: CGFloat)] = []
-        for x in 0..<size {
-            for y in 0..<size {
-                guard let color = bitmap.colorAt(x: x, y: y)?
-                    .usingColorSpace(.deviceRGB) else { continue }
-                var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-                color.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        for y in 0..<size {
+            for x in 0..<size {
+                let offset = (y * size + x) * bytesPerPixel
+                let r = CGFloat(rawData[offset]) / 255.0
+                let g = CGFloat(rawData[offset + 1]) / 255.0
+                let b_val = CGFloat(rawData[offset + 2]) / 255.0
+                let a = CGFloat(rawData[offset + 3]) / 255.0
+                guard a > 0.1 else { continue }
+
+                // Convert RGB to HSB
+                let maxC = max(r, max(g, b_val))
+                let minC = min(r, min(g, b_val))
+                let delta = maxC - minC
+
+                var h: CGFloat = 0
+                let s: CGFloat = maxC == 0 ? 0 : delta / maxC
+                let b: CGFloat = maxC
+
+                if delta > 0.00001 {
+                    if r == maxC {
+                        h = (g - b_val) / delta
+                    } else if g == maxC {
+                        h = 2 + (b_val - r) / delta
+                    } else {
+                        h = 4 + (r - g) / delta
+                    }
+                    h /= 6.0
+                    if h < 0 { h += 1.0 }
+                }
+
                 // Weight vivid mid-brightness pixels highest.
                 let weight = s * (1 - abs(b - 0.55))
                 samples.append((h, s, b, max(weight, 0.01)))

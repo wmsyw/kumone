@@ -24,6 +24,11 @@ enum Theme {
         static let cardSize: CGFloat = 160
         static let sidebarWidth: CGFloat = 220
         static let playerBarHeight: CGFloat = 56
+        /// Gap between the floating player bar and the window's bottom edge.
+        /// Must match the bar's own `.padding(.bottom,)` in PlayerBar.
+        static let playerBarBottomMargin: CGFloat = 10
+        /// Bottom inset pages need so scrolled content clears the floating bar.
+        static var playerChromeClearance: CGFloat { playerBarHeight + playerBarBottomMargin }
         static let minWindowWidth: CGFloat = 1020
         static let minWindowHeight: CGFloat = 640
         static let defaultWindowWidth: CGFloat = 1200
@@ -52,10 +57,20 @@ extension View {
     /// Glass background with a graceful material fallback on macOS 15.
     @ViewBuilder
     func compatGlass(interactive: Bool = false, in shape: some Shape) -> some View {
+        #if os(macOS)
         if #available(macOS 26.0, *) {
             self.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
         } else {
             self.background(.ultraThinMaterial, in: shape)
         }
+        #elseif os(iOS)
+        if #available(iOS 26.0, *) {
+            self.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            self.background(.ultraThinMaterial, in: shape)
+        }
+        #else
+        self.background(.ultraThinMaterial, in: shape)
+        #endif
     }
 }

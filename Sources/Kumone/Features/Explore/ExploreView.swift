@@ -99,7 +99,7 @@ struct ExploreView: View {
                                     playPlaylist(playlist.id)
                                 }
                             }
-                            .buttonStyle(.interactiveCard)
+                            .buttonStyle(.plain)
                             .staggeredAppearance(index: index % 10, id: "explore-\(playlist.id)")
                         }
                     }
@@ -203,7 +203,7 @@ struct ToplistGrid: View {
                                 in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.interactiveCard)
+                .buttonStyle(.plain)
             }
         }
     }

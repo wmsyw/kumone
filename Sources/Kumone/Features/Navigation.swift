@@ -1,7 +1,14 @@
 import SwiftUI
 
+private struct OpenLoginKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
 extension EnvironmentValues {
-    @Entry var openLogin: () -> Void = {}
+    var openLogin: () -> Void {
+        get { self[OpenLoginKey.self] }
+        set { self[OpenLoginKey.self] = newValue }
+    }
 }
 
 struct PlayerChromeModifier: ViewModifier {
@@ -32,7 +39,7 @@ struct PlayerChromeModifier: ViewModifier {
                 }
             }
             .padding(.top, 12)
-            .padding(.bottom, Theme.Layout.playerBarHeight + 20)
+            .padding(.bottom, Theme.Layout.playerChromeClearance + 10)
             .padding(.trailing, 16)
             .transition(.move(edge: .trailing).combined(with: .opacity))
         }
@@ -91,7 +98,7 @@ extension View {
     }
 
     func playerContentInset() -> some View {
-        safeAreaPadding(.bottom, Theme.Layout.playerBarHeight + 10)
+        safeAreaPadding(.bottom, Theme.Layout.playerChromeClearance)
     }
 
     func appDestinations() -> some View {

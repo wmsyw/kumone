@@ -2,6 +2,7 @@
 .swiftpm/
 .DS_Store
 *.xcodeproj
+!ios/KumoneIOS.xcodeproj
 xcuserdata/
 DerivedData/
 dist/

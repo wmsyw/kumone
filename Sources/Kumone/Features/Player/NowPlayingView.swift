@@ -7,48 +7,67 @@ struct NowPlayingView: View {
     @Environment(AccountStore.self) private var account
     @Environment(SettingsManager.self) private var settings
 
-    @State private var artworkImage: NSImage?
+    @State private var artworkImage: PlatformImage?
     @State private var colors: ArtworkColors = .fallback
     @State private var activeIndex: Int?
     @State private var isUserScrolling = false
     @State private var resumeTask: Task<Void, Never>?
+    @State private var showLyricsOnMobile = false
 
     var body: some View {
-        ZStack {
-            backdrop
+        GeometryReader { geo in
+            let isCompact = geo.size.width < 720
+            ZStack {
+                backdrop
 
-            HStack(spacing: 0) {
-                leftColumn
-                    .frame(maxWidth: .infinity)
-                if hasLyricsColumn {
-                    lyricsColumn
-                        .frame(maxWidth: .infinity)
+                if isCompact {
+                    compactLayout(size: geo.size)
+                } else {
+                    regularLayout
                 }
             }
-            .padding(.horizontal, 48)
-            .padding(.vertical, 40)
-        }
-        .overlay(alignment: .topLeading) {
-            Button {
-                close()
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.12), in: Circle())
+            .overlay(alignment: .topLeading) {
+                Button {
+                    close()
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.pressable)
+                .padding(.top, 16)
+                .padding(.leading, 20)
             }
-            .buttonStyle(.pressable)
-            .padding(.top, 16)
-            .padding(.leading, 20)
+            .overlay(alignment: .topTrailing) {
+                if isCompact {
+                    Button {
+                        withAnimation(AppAnimation.standard) {
+                            showLyricsOnMobile.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showLyricsOnMobile ? "music.note" : "quote.bubble")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(showLyricsOnMobile ? Theme.accent : .white.opacity(0.85))
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.12), in: Circle())
+                    }
+                    .buttonStyle(.pressable)
+                    .padding(.top, 16)
+                    .padding(.trailing, 20)
+                }
+            }
         }
         .preferredColorScheme(.dark)
         .task(id: player.currentTrack?.id) {
             await loadArtwork()
         }
+        #if os(macOS)
         .onExitCommand {
             close()
         }
+        #endif
     }
 
     private var hasLyricsColumn: Bool {
@@ -94,49 +113,97 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: - Left column
+    // MARK: - Layouts
 
-    private var leftColumn: some View {
+    private var regularLayout: some View {
+        HStack(spacing: 0) {
+            leftColumn(artworkSize: 340)
+                .frame(maxWidth: .infinity)
+            if hasLyricsColumn {
+                lyricsColumn
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 48)
+        .padding(.vertical, 40)
+    }
+
+    private func compactLayout(size: CGSize) -> some View {
+        let artworkDim = min(size.width - 64, size.height * 0.38, 300)
+        return VStack(spacing: 20) {
+            Spacer().frame(height: 44)
+            if showLyricsOnMobile {
+                lyricsColumn
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: 20) {
+                    artworkView(size: artworkDim)
+                    trackMetaView
+                    Spacer()
+                }
+                .transition(.opacity)
+            }
+            VStack(spacing: 12) {
+                NowPlayingScrubber()
+                    .padding(.horizontal, 24)
+                controls
+            }
+            .padding(.bottom, 24)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Views
+
+    private func artworkView(size: CGFloat) -> some View {
+        Group {
+            if let artworkImage {
+                Image(platformImage: artworkImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle()
+                    .fill(.white.opacity(0.06))
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 48, weight: .light))
+                            .foregroundStyle(.white.opacity(0.3))
+                    )
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.45), radius: 36, y: 18)
+        .scaleEffect(player.isPlaying ? 1 : 0.95)
+        .animation(AppAnimation.bouncy, value: player.isPlaying)
+    }
+
+    private var trackMetaView: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 8) {
+                Text(player.currentTrack?.name ?? "")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if player.currentTrack?.fee == 1 {
+                    VIPBadge()
+                }
+            }
+            Text("\(player.currentTrack?.artistNames ?? "") — \(player.currentTrack?.album.name ?? "")")
+                .font(.system(size: 13.5))
+                .foregroundStyle(.white.opacity(0.65))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: 400)
+    }
+
+    private func leftColumn(artworkSize: CGFloat) -> some View {
         VStack(spacing: 26) {
             Spacer()
 
-            Group {
-                if let artworkImage {
-                    Image(nsImage: artworkImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    Rectangle()
-                        .fill(.white.opacity(0.06))
-                        .overlay(
-                            Image(systemName: "music.note")
-                                .font(.system(size: 48, weight: .light))
-                                .foregroundStyle(.white.opacity(0.3))
-                        )
-                }
-            }
-            .frame(width: 340, height: 340)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: .black.opacity(0.45), radius: 36, y: 18)
-            .scaleEffect(player.isPlaying ? 1 : 0.95)
-            .animation(AppAnimation.bouncy, value: player.isPlaying)
-
-            VStack(spacing: 5) {
-                HStack(spacing: 8) {
-                    Text(player.currentTrack?.name ?? "")
-                        .font(.system(size: 21, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    if player.currentTrack?.fee == 1 {
-                        VIPBadge()
-                    }
-                }
-                Text("\(player.currentTrack?.artistNames ?? "") — \(player.currentTrack?.album.name ?? "")")
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: 400)
+            artworkView(size: artworkSize)
+            trackMetaView
 
             VStack(spacing: 14) {
                 NowPlayingScrubber()

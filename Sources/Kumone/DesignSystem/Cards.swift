@@ -98,9 +98,9 @@ struct Shelf<Content: View>: View {
                 .padding(.horizontal, Theme.Layout.contentInset)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: spacing) {
-                    Spacer().frame(width: Theme.Layout.contentInset - spacing)
+                    Color.clear.frame(width: max(0, Theme.Layout.contentInset - spacing), height: 1)
                     content()
-                    Spacer().frame(width: Theme.Layout.contentInset - spacing)
+                    Color.clear.frame(width: max(0, Theme.Layout.contentInset - spacing), height: 1)
                 }
             }
         }

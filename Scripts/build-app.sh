@@ -25,8 +25,15 @@ SPARKLE_PUBLIC_ED_KEY="RHEhllstUuuVrVDCPGrbhg/8LivSzpuZB9X3u3xdV5o="
 BUILD_DIR="$ROOT/.build/app"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 
-swift build -c "$CONF" --product "$APP_NAME"
-BIN_PATH="$(swift build -c "$CONF" --show-bin-path)"
+# ARCHES="arm64 x86_64" builds a universal binary (CI release);
+# default is the host architecture for fast dev loops.
+ARCH_FLAGS=()
+for arch in ${ARCHES:-}; do
+  ARCH_FLAGS+=(--arch "$arch")
+done
+
+swift build -c "$CONF" "${ARCH_FLAGS[@]}" --product "$APP_NAME"
+BIN_PATH="$(swift build -c "$CONF" "${ARCH_FLAGS[@]}" --show-bin-path)"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
@@ -122,6 +129,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+if [ -n "${ARCHES:-}" ]; then
+  echo "Binary architectures: $(lipo -archs "$APP_BUNDLE/Contents/MacOS/$APP_NAME")"
+fi
 
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 codesign --force --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true

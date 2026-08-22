@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import MediaPlayer
 
 /// System Now Playing integration: media keys, Control Center, lock-screen metadata.

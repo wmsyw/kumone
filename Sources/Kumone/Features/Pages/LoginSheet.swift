@@ -12,7 +12,7 @@ struct LoginSheet: View {
     }
 
     @State private var phase: Phase = .loading
-    @State private var qrImage: NSImage?
+    @State private var qrImage: PlatformImage?
     @State private var pollTask: Task<Void, Never>?
 
     @Environment(AccountStore.self) private var account
@@ -36,7 +36,7 @@ struct LoginSheet: View {
                     .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
 
                 if let qrImage {
-                    Image(nsImage: qrImage)
+                    Image(platformImage: qrImage)
                         .resizable()
                         .interpolation(.none)
                         .frame(width: 180, height: 180)
@@ -157,7 +157,7 @@ struct LoginSheet: View {
         }
     }
 
-    private static func generateQR(from string: String) -> NSImage? {
+    private static func generateQR(from string: String) -> PlatformImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)
         filter.correctionLevel = "M"
@@ -165,6 +165,10 @@ struct LoginSheet: View {
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
         let context = CIContext()
         guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        #if os(macOS)
         return NSImage(cgImage: cgImage, size: NSSize(width: 180, height: 180))
+        #elseif os(iOS)
+        return UIImage(cgImage: cgImage)
+        #endif
     }
 }

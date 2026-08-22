@@ -13,7 +13,7 @@ final class SearchViewModel {
         var id: String { rawValue }
     }
 
-    let query: String
+    var query: String
     var tab: Tab = .all
     var songs: [Track] = []
     var artists: [ArtistSummary] = []
@@ -26,7 +26,19 @@ final class SearchViewModel {
         self.query = query
     }
 
+    func setQuery(_ newQuery: String) {
+        guard newQuery != query else { return }
+        query = newQuery
+        loadedTabs.removeAll()
+        songs = []
+        artists = []
+        albums = []
+        playlists = []
+    }
+
     func load(tab: Tab) async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         guard !loadedTabs.contains(tab) else { return }
         isLoading = true
         defer { isLoading = false }
@@ -34,64 +46,100 @@ final class SearchViewModel {
 
         switch tab {
         case .all:
-            async let songsTask = try? NeteaseAPI.search(query, type: .songs, limit: 12)
-            async let artistsTask = try? NeteaseAPI.search(query, type: .artists, limit: 10)
-            async let albumsTask = try? NeteaseAPI.search(query, type: .albums, limit: 10)
-            async let playlistsTask = try? NeteaseAPI.search(query, type: .playlists, limit: 10)
+            async let songsTask = try? NeteaseAPI.search(trimmed, type: .songs, limit: 12)
+            async let artistsTask = try? NeteaseAPI.search(trimmed, type: .artists, limit: 10)
+            async let albumsTask = try? NeteaseAPI.search(trimmed, type: .albums, limit: 10)
+            async let playlistsTask = try? NeteaseAPI.search(trimmed, type: .playlists, limit: 10)
             songs = (await songsTask)?.songs ?? []
             artists = (await artistsTask)?.artists ?? []
             albums = (await albumsTask)?.albums ?? []
             playlists = (await playlistsTask)?.playlists ?? []
         case .songs:
-            songs = (try? await NeteaseAPI.search(query, type: .songs, limit: 100))?.songs ?? songs
+            songs = (try? await NeteaseAPI.search(trimmed, type: .songs, limit: 100))?.songs ?? songs
         case .artists:
-            artists = (try? await NeteaseAPI.search(query, type: .artists, limit: 50))?.artists ?? artists
+            artists = (try? await NeteaseAPI.search(trimmed, type: .artists, limit: 50))?.artists ?? artists
         case .albums:
-            albums = (try? await NeteaseAPI.search(query, type: .albums, limit: 50))?.albums ?? albums
+            albums = (try? await NeteaseAPI.search(trimmed, type: .albums, limit: 50))?.albums ?? albums
         case .playlists:
-            playlists = (try? await NeteaseAPI.search(query, type: .playlists, limit: 50))?.playlists ?? playlists
+            playlists = (try? await NeteaseAPI.search(trimmed, type: .playlists, limit: 50))?.playlists ?? playlists
         }
     }
 }
 
 struct SearchView: View {
-    let query: String
+    let initialQuery: String
 
     @State private var model: SearchViewModel
+    @State private var searchText: String = ""
     @Environment(PlayerService.self) private var player
 
     init(query: String) {
-        self.query = query
+        self.initialQuery = query
         _model = State(initialValue: SearchViewModel(query: query))
+        _searchText = State(initialValue: query)
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Picker("", selection: Bindable(model).tab) {
-                    ForEach(SearchViewModel.Tab.allCases) { tab in
-                        Text(LocalizedStringKey(tab.rawValue)).tag(tab)
+            VStack(alignment: .leading, spacing: 20) {
+                if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Picker("", selection: Bindable(model).tab) {
+                        ForEach(SearchViewModel.Tab.allCases) { tab in
+                            Text(LocalizedStringKey(tab.rawValue)).tag(tab)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 340)
-                .padding(.horizontal, Theme.Layout.contentInset)
-                .padding(.top, 12)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .padding(.horizontal, Theme.Layout.contentInset)
+                    .padding(.top, 12)
 
-                if model.isLoading, currentEmpty {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 300)
+                    if model.isLoading && currentEmpty {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 300)
+                    } else {
+                        tabContent
+                    }
                 } else {
-                    tabContent
+                    emptySearchPrompt
                 }
-                Color.clear.frame(height: 8)
+                Color.clear.frame(height: 80)
             }
         }
-        .navigationTitle(String(localized: "搜索：\(query)"))
+        .searchable(text: $searchText, prompt: "搜索歌曲、歌手、专辑、歌单")
+        .onSubmit(of: .search) {
+            model.setQuery(searchText)
+            Task { await model.load(tab: model.tab) }
+        }
+        .onChange(of: searchText) { _, newValue in
+            model.setQuery(newValue)
+            Task {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                if searchText == newValue {
+                    await model.load(tab: model.tab)
+                }
+            }
+        }
+        .navigationTitle(searchText.isEmpty ? "搜索" : String(localized: "搜索：\(searchText)"))
         .task(id: model.tab) {
             await model.load(tab: model.tab)
         }
+    }
+
+    private var emptySearchPrompt: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 60)
+            Text("探索海量华语流行与经典音乐")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text("输入歌曲名称、歌手名或歌单关键字开始搜索")
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 32)
     }
 
     private var currentEmpty: Bool {
@@ -160,7 +208,9 @@ struct SearchView: View {
 
     private func artistCards(_ items: some Collection<ArtistSummary>) -> some View {
         ForEach(Array(items)) { artist in
-            NavigationLink(value: Destination.artist(artist.id)) {
+            NavigationLink {
+                ArtistDetailView(artistID: artist.id)
+            } label: {
                 VStack(spacing: 10) {
                     CachedAsyncImage(url: artist.picUrl?.resizedImageURL(256))
                         .frame(width: 128, height: 128)
@@ -171,35 +221,38 @@ struct SearchView: View {
                         .lineLimit(1)
                 }
                 .frame(width: 140)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.interactiveCard)
+            .buttonStyle(.plain)
         }
     }
 
     private func albumCards(_ items: some Collection<AlbumSummary>) -> some View {
         ForEach(Array(items)) { album in
-            NavigationLink(value: Destination.album(album.id)) {
+            NavigationLink {
+                AlbumDetailView(albumID: album.id)
+            } label: {
                 CoverCardBody(
                     coverURL: album.picUrl?.resizedImageURL(384),
                     title: album.name,
                     subtitle: album.artistName
                 )
             }
-            .buttonStyle(.interactiveCard)
+            .buttonStyle(.plain)
         }
     }
 
     private func playlistCards(_ items: some Collection<PlaylistSummary>) -> some View {
         ForEach(Array(items)) { playlist in
-            NavigationLink(value: Destination.playlist(playlist.id)) {
+            NavigationLink {
+                PlaylistDetailView(playlistID: playlist.id)
+            } label: {
                 CoverCardBody(
                     coverURL: playlist.coverURL?.resizedImageURL(384),
                     title: playlist.name,
                     playCount: playlist.playCount
                 )
             }
-            .buttonStyle(.interactiveCard)
+            .buttonStyle(.plain)
         }
     }
 }

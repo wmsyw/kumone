@@ -51,9 +51,10 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
           rm -f "$RUNNER_TEMP/cert.p12"
 
-      - name: Build app
+      - name: Build app (universal)
         run: |
           MARKETING_VERSION="$VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
+            ARCHES="arm64 x86_64" \
             Scripts/build-app.sh release
 
       - name: Codesign (Developer ID, hardened runtime)
@@ -107,6 +108,20 @@ jobs:
           rm -f "dist/$APP_NAME-$VERSION.html"
           cat dist/appcast.xml
 
+      - name: Build unsigned iOS IPA
+        run: |
+          xcodebuild -workspace ios/KumoneIOS.xcworkspace -scheme KumoneIOS \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            build
+          APP="$RUNNER_TEMP/ios-dd/Build/Products/Release-iphoneos/KumoneIOS.app"
+          mkdir -p "$RUNNER_TEMP/payload/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/payload/Payload/"
+          (cd "$RUNNER_TEMP/payload" && zip -qry "$GITHUB_WORKSPACE/dist/$APP_NAME-iOS-$VERSION.ipa" Payload)
+          ls -la dist/
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -115,4 +130,5 @@ jobs:
             --title "$APP_NAME $VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             "dist/$APP_NAME-$VERSION.zip" \
+            "dist/$APP_NAME-iOS-$VERSION.ipa" \
             dist/appcast.xml
