@@ -32,8 +32,9 @@ for arch in ${ARCHES:-}; do
   ARCH_FLAGS+=(--arch "$arch")
 done
 
-swift build -c "$CONF" "${ARCH_FLAGS[@]}" --product "$APP_NAME"
-BIN_PATH="$(swift build -c "$CONF" "${ARCH_FLAGS[@]}" --show-bin-path)"
+# ${arr[@]+...} keeps macOS's bash 3.2 happy under set -u with empty arrays
+swift build -c "$CONF" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --product "$APP_NAME"
+BIN_PATH="$(swift build -c "$CONF" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"

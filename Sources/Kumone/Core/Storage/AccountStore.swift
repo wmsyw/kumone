@@ -80,6 +80,7 @@ final class AccountStore {
             if like { likedTrackIDs.remove(trackID) } else { likedTrackIDs.insert(trackID) }
             ToastCenter.shared.show(error.localizedDescription)
         }
+        NowPlayingManager.shared.refreshLikeState()
     }
 
     func logout() async {

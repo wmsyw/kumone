@@ -6,6 +6,39 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.2.3 - 2026-08-22
+
+### Fixed / 修复
+
+- iOS playback now resumes automatically after audio interruptions (phone calls, WeChat voice messages) end; playback also pauses when headphones are unplugged
+- iOS 音频被打断（来电、微信语音等）结束后现在会自动恢复播放；拔出耳机时自动暂停
+
+## 0.2.2 - 2026-08-22
+
+### Fixed / 修复
+
+- The iOS app icon never showed — the icon set contained no image; the gold-spiral icon is now rendered from the shared artwork with the same composition as macOS
+- The iOS Home Screen name showed "KumoneIOS" (`PRODUCT_DISPLAY_NAME` is not a real build setting); it now displays "Kumone" via `CFBundleDisplayName`
+- iOS 图标一直不显示的问题（图标集里没有任何图片）；现从共享素材按 macOS 相同构图渲染金色旋涡图标
+- iOS 主屏名称显示为「KumoneIOS」的问题（`PRODUCT_DISPLAY_NAME` 并非有效构建设置）；现通过 `CFBundleDisplayName` 显示为「Kumone」
+
+### Improved / 改进
+
+- The iOS bundle identifier is now `sb.moe.kumone`, distinct from the macOS app (`im.missuo.Kumone` stays unchanged so Sparkle updates keep working)
+- iOS 的 bundle ID 改为 `sb.moe.kumone`，与 macOS 区分（macOS 保持 `im.missuo.Kumone` 不变，确保 Sparkle 升级不受影响）
+
+## 0.2.1 - 2026-08-22
+
+### Added / 新增
+
+- Now Playing gains a like command: the hearted state syncs with the app and can be toggled from CarPlay / Control Center contexts
+- 系统 Now Playing 接入「喜欢」：红心状态与 App 内双向同步，可在 CarPlay / 控制中心相关场景切换
+
+### Fixed / 修复
+
+- iOS audio stopped when the app left the foreground: `INFOPLIST_KEY_UIBackgroundModes` is not a real build setting and was silently ignored, so the built Info.plist had no background-audio declaration; it now comes from a partial Info.plist merged into the generated one
+- iOS 应用退到后台后音频停止的问题：`INFOPLIST_KEY_UIBackgroundModes` 并非有效构建设置、被静默忽略，构建产物缺少后台音频声明；现改由部分 Info.plist 与自动生成内容合并提供
+
 ## 0.2.0 - 2026-08-21
 
 ### Added / 新增

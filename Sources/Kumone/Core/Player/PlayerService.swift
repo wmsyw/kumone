@@ -115,6 +115,29 @@ final class PlayerService {
         } catch {
             print("Failed to activate audio session: \(error)")
         }
+
+        // Resume after interruptions (phone calls, WeChat voice messages, …).
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                self?.handleAudioInterruption(note)
+            }
+        }
+        // Pause when the output route disappears (headphones unplugged).
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let reasonValue = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                      let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
+                      reason == .oldDeviceUnavailable, self.isPlaying else { return }
+                self.pause()
+            }
+        }
         #endif
 
         timeObserver = engine.addPeriodicTimeObserver(
@@ -144,6 +167,35 @@ final class PlayerService {
 
     /// Set while the user drags the seek bar so the time observer doesn't fight the thumb.
     var isScrubbing = false
+
+    #if os(iOS)
+    private var wasPlayingBeforeInterruption = false
+
+    private func handleAudioInterruption(_ note: Notification) {
+        guard let typeValue = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        switch type {
+        case .began:
+            wasPlayingBeforeInterruption = isPlaying
+            if isPlaying {
+                // The system already silenced us; sync our state and UI.
+                isPlaying = false
+                NowPlayingManager.shared.updateElapsed(progress, rate: 0)
+            }
+        case .ended:
+            let optionsValue = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            guard wasPlayingBeforeInterruption, options.contains(.shouldResume) else { return }
+            wasPlayingBeforeInterruption = false
+            try? AVAudioSession.sharedInstance().setActive(true)
+            engine.play()
+            isPlaying = true
+            NowPlayingManager.shared.updateElapsed(progress, rate: 1)
+        @unknown default:
+            break
+        }
+    }
+    #endif
 
     // MARK: - Entry points
 

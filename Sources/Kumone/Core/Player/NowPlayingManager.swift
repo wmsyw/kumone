@@ -44,6 +44,29 @@ final class NowPlayingManager {
             player?.seek(to: event.positionTime)
             return .success
         }
+
+        // Like feedback (Control Center long-press / CarPlay; isActive = hearted)
+        center.likeCommand.isEnabled = true
+        center.likeCommand.localizedTitle = String(localized: "喜欢")
+        center.likeCommand.localizedShortTitle = String(localized: "喜欢")
+        center.likeCommand.addTarget { [weak player] _ in
+            guard let track = player?.currentTrack else { return .noActionableNowPlayingItem }
+            Task { @MainActor in
+                await AccountStore.shared.toggleLike(trackID: track.id)
+                NowPlayingManager.shared.refreshLikeState()
+            }
+            return .success
+        }
+    }
+
+    /// Reflects the current track's hearted state on the like command.
+    func refreshLikeState() {
+        guard let track = player?.currentTrack else {
+            MPRemoteCommandCenter.shared().likeCommand.isActive = false
+            return
+        }
+        MPRemoteCommandCenter.shared().likeCommand.isActive =
+            AccountStore.shared.isLiked(track.id)
     }
 
     func updateMetadata(for track: Track, duration: TimeInterval) {
@@ -57,6 +80,7 @@ final class NowPlayingManager {
         ]
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = .playing
+        refreshLikeState()
 
         artworkTask?.cancel()
         guard let url = track.album.picUrl?.resizedImageURL(512) else { return }
