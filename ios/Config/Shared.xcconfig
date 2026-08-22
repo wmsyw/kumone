@@ -31,12 +31,12 @@ GENERATE_INFOPLIST_FILE = YES
 // Without a launch-screen declaration iOS letterboxes the app
 // in legacy compatibility mode (black bars top and bottom).
 INFOPLIST_KEY_UILaunchScreen_Generation = YES
-// UIBackgroundModes has no INFOPLIST_KEY_ build setting — it must come
+// UIBackgroundModes and NSAppTransportSecurity have no INFOPLIST_KEY_*
+// build settings (the latter silently no-ops) — nested keys must come
 // from a partial Info.plist merged with the generated one.
 INFOPLIST_FILE = Config/Info.plist
 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
 INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationLandscapeRight UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown
-INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES
 
 // ==========================================
 // Entitlements
