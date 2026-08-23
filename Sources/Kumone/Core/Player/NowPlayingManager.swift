@@ -83,7 +83,9 @@ final class NowPlayingManager {
         refreshLikeState()
 
         artworkTask?.cancel()
-        guard let url = track.album.picUrl?.resizedImageURL(512) else { return }
+        // 1024px: the lock screen's tap-to-fullscreen artwork presentation
+        // needs high-resolution art to engage.
+        guard let url = track.album.picUrl?.resizedImageURL(1024) else { return }
         artworkTask = Task { [weak self] in
             guard let image = await ImageCache.shared.image(for: url),
                   let self, !Task.isCancelled else { return }

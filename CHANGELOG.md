@@ -11,7 +11,16 @@ counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单
 ### Fixed / 修复
 
 - iOS playback now resumes automatically after audio interruptions (phone calls, WeChat voice messages) end; playback also pauses when headphones are unplugged
+- The artwork was clipped in iPhone landscape on the now-playing page; it now scales to the display height
+- Lock-screen artwork is now served at 1024px so the tap-to-fullscreen presentation engages
 - iOS 音频被打断（来电、微信语音等）结束后现在会自动恢复播放；拔出耳机时自动暂停
+- iPhone 横屏下播放页封面显示不全的问题；封面现随屏幕高度自适应缩放
+- 锁屏封面改为 1024px 高清图，点按全屏展示可正常触发
+
+### Added / 新增
+
+- The compact now-playing page fills the gap between the artwork and the controls with three auto-scrolling synced lyric lines; tap them (or the top-right button) for the full lyrics page
+- 紧凑播放页在封面与控制键之间新增三行自动滚动的同步歌词，点击歌词（或右上角按钮）进入全屏歌词页
 
 ## 0.2.2 - 2026-08-22
 

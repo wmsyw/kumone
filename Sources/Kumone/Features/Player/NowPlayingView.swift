@@ -23,7 +23,7 @@ struct NowPlayingView: View {
                 if isCompact {
                     compactLayout(size: geo.size)
                 } else {
-                    regularLayout
+                    regularLayout(size: geo.size)
                 }
             }
             .overlay(alignment: .topLeading) {
@@ -115,9 +115,12 @@ struct NowPlayingView: View {
 
     // MARK: - Layouts
 
-    private var regularLayout: some View {
-        HStack(spacing: 0) {
-            leftColumn(artworkSize: 340)
+    private func regularLayout(size: CGSize) -> some View {
+        // Everything below the artwork needs ~300pt; shrink the artwork on
+        // short displays (iPhone landscape) instead of clipping it.
+        let artworkSize = max(120, min(340, size.width * 0.32, size.height - 300))
+        return HStack(spacing: 0) {
+            leftColumn(artworkSize: artworkSize)
                 .frame(maxWidth: .infinity)
             if hasLyricsColumn {
                 lyricsColumn
@@ -125,7 +128,7 @@ struct NowPlayingView: View {
             }
         }
         .padding(.horizontal, 48)
-        .padding(.vertical, 40)
+        .padding(.vertical, size.height < 500 ? 24 : 40)
     }
 
     private func compactLayout(size: CGSize) -> some View {
@@ -140,7 +143,12 @@ struct NowPlayingView: View {
                 VStack(spacing: 20) {
                     artworkView(size: artworkDim)
                     trackMetaView
-                    Spacer()
+                    MiniLyricsView {
+                        withAnimation(AppAnimation.standard) {
+                            showLyricsOnMobile = true
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .transition(.opacity)
             }
@@ -453,5 +461,60 @@ struct NowPlayingScrubber: View {
 
     private var thumbDiameter: CGFloat {
         isDragging ? 13 : (isHovering ? 11 : 9)
+    }
+}
+
+// MARK: - Mini lyrics (compact now-playing)
+
+/// Three synced lyric lines (previous / current / next) filling the gap
+/// between the track meta and the transport controls on compact layouts.
+/// Tapping opens the full lyrics page.
+struct MiniLyricsView: View {
+    let onOpen: () -> Void
+
+    @Environment(PlayerService.self) private var player
+
+    private var lines: (previous: LyricLine?, current: LyricLine?, next: LyricLine?) {
+        guard let lyrics = player.lyrics, !lyrics.isEmpty else { return (nil, nil, nil) }
+        guard let index = lyrics.activeIndex(at: player.progress + 0.2) else {
+            return (nil, nil, lyrics.lines.first)
+        }
+        let all = lyrics.lines
+        return (
+            index > 0 ? all[index - 1] : nil,
+            all[index],
+            index + 1 < all.count ? all[index + 1] : nil
+        )
+    }
+
+    var body: some View {
+        let (previous, current, next) = lines
+        Group {
+            if current != nil || next != nil {
+                VStack(spacing: 12) {
+                    line(previous, emphasized: false)
+                    line(current, emphasized: true)
+                    line(next, emphasized: false)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onOpen)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: current?.id)
+            } else {
+                Color.clear
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func line(_ line: LyricLine?, emphasized: Bool) -> some View {
+        Text(line?.text.isEmpty == false ? line!.text : " ")
+            .font(.system(size: emphasized ? 17 : 14, weight: emphasized ? .bold : .medium))
+            .foregroundStyle(.white.opacity(emphasized ? 1 : 0.45))
+            .lineLimit(1)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 28)
+            .id(line?.id)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 }
