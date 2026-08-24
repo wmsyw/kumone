@@ -102,7 +102,7 @@ struct SearchView: View {
                 } else {
                     emptySearchPrompt
                 }
-                Color.clear.frame(height: 80)
+                PlayerClearanceSpacer()
             }
         }
         .searchable(text: $searchText, prompt: "搜索歌曲、歌手、专辑、歌单")

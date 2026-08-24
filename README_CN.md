@@ -70,6 +70,12 @@ brew install owo-network/brew/kumone --cask
 应用已使用 Developer ID 签名并通过 Apple 公证，内置 Sparkle 自动更新
 （菜单栏 Kumone → 检查更新…）。
 
+### iOS / iPadOS（侧载）
+
+每次发版都会附带**无签名**的 `Kumone-iOS-x.y.z.ipa`（iOS 17+）。Kumone 是非官方客户端，不会上架 App Store 或 TestFlight，请用侧载工具以自己的 Apple ID 签名安装 —— [AltStore](https://altstore.io)、[SideStore](https://sidestore.io)、[Sideloadly](https://sideloadly.io) 或 Xcode 均可。
+
+更新：iOS 应用无法自我替换。设置 → 关于 → **检查更新** 会提示是否有新版本并给出下载链接，下载新 IPA 后用同一工具重新安装即可，登录状态与设置会保留。AltStore / SideStore 也可通过 source 自动追踪发布。
+
 ## 构建
 
 要求 macOS 15+、Xcode 26+。

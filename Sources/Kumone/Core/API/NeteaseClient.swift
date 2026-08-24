@@ -94,11 +94,12 @@ final class NeteaseClient: @unchecked Sendable {
         }
     }
 
-    private func cookieHeader(extra: [String: String]) -> String {
+    private func cookieHeader(extra: [String: String], overrides: [String: String] = [:]) -> String {
         cookieLock.lock()
         var all = cookies
         cookieLock.unlock()
         for (k, v) in extra where all[k] == nil { all[k] = v }
+        for (k, v) in overrides { all[k] = v }
         return all.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
     }
 
@@ -116,7 +117,8 @@ final class NeteaseClient: @unchecked Sendable {
     // MARK: - Requests
 
     /// POST to `https://music.163.com/weapi<path>` with weapi encryption.
-    func weapi(_ path: String, _ payload: [String: Any] = [:]) async throws -> Data {
+    func weapi(_ path: String, _ payload: [String: Any] = [:],
+               cookieOverrides: [String: String] = [:]) async throws -> Data {
         var body = payload
         body["csrf_token"] = cookie(named: "__csrf") ?? ""
         let json = try JSONSerialization.data(withJSONObject: body)
@@ -132,7 +134,8 @@ final class NeteaseClient: @unchecked Sendable {
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue(cookieHeader(extra: ["os": "pc", "appver": "3.1.17"]), forHTTPHeaderField: "Cookie")
+        request.setValue(cookieHeader(extra: ["os": "pc", "appver": "3.1.17"], overrides: cookieOverrides),
+                         forHTTPHeaderField: "Cookie")
         request.httpBody = Self.encodeForm(form)
         return try await perform(request)
     }

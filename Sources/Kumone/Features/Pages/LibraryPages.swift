@@ -50,7 +50,7 @@ struct RecentsView: View {
                     recordList
                         .padding(.horizontal, Theme.Layout.contentInset - 10)
                 }
-                Color.clear.frame(height: 8)
+                PlayerClearanceSpacer()
             }
         }
         .navigationTitle("最近播放")
@@ -131,7 +131,7 @@ struct CloudView: View {
                     TrackListView(tracks: tracks, style: .compact, source: .cloud)
                         .padding(.horizontal, Theme.Layout.contentInset - 10)
                 }
-                Color.clear.frame(height: 8)
+                PlayerClearanceSpacer()
             }
         }
         .navigationTitle("音乐云盘")

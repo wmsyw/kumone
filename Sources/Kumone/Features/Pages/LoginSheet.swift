@@ -2,6 +2,13 @@ import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct LoginSheet: View {
+    private enum Mode: String, CaseIterable, Identifiable {
+        case qr = "扫码登录"
+        case sms = "手机验证码"
+
+        var id: String { rawValue }
+    }
+
     private enum Phase: Equatable {
         case loading
         case waiting          // 801
@@ -11,23 +18,82 @@ struct LoginSheet: View {
         case failed(String)
     }
 
+    @State private var mode: Mode = .qr
     @State private var phase: Phase = .loading
     @State private var qrImage: PlatformImage?
+    @State private var unikey: String?
     @State private var pollTask: Task<Void, Never>?
+
+    // SMS login
+    @State private var phone = ""
+    @State private var code = ""
+    @State private var smsCooldown = 0
+    @State private var smsSending = false
+    @State private var smsLoggingIn = false
+    @State private var smsMessage: String?
+    @State private var cooldownTask: Task<Void, Never>?
 
     @Environment(AccountStore.self) private var account
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         VStack(spacing: 20) {
             VStack(spacing: 6) {
                 Text("登录网易云音乐")
                     .font(.title3.weight(.semibold))
-                Text("使用网易云音乐 App 扫码登录")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
+                Picker("", selection: $mode) {
+                    ForEach(Mode.allCases) { mode in
+                        Text(LocalizedStringKey(mode.rawValue)).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+                .padding(.top, 6)
             }
             .padding(.top, 28)
+
+            switch mode {
+            case .qr:
+                qrSection
+            case .sms:
+                smsSection
+            }
+
+            Button("取消") {
+                dismiss()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12.5))
+            .foregroundStyle(.secondary)
+            .padding(.bottom, 20)
+        }
+        .frame(width: 320)
+        .onAppear { startLogin() }
+        .onDisappear {
+            pollTask?.cancel()
+            cooldownTask?.cancel()
+        }
+        // Coming back from the NetEase app (single-device flow): if polling
+        // died while we were in the background, pick it up again.
+        .onChange(of: scenePhase) {
+            guard scenePhase == .active, mode == .qr else { return }
+            if case .failed = phase { startLogin(reusingKey: true) }
+            else if pollTask == nil || pollTask?.isCancelled == true { startLogin(reusingKey: true) }
+        }
+        .onChange(of: mode) {
+            if mode == .qr, case .failed = phase { startLogin(reusingKey: true) }
+        }
+    }
+
+    // MARK: - QR
+
+    private var qrSection: some View {
+        VStack(spacing: 20) {
+            Text("使用网易云音乐 App 扫码登录")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -97,17 +163,14 @@ struct LoginSheet: View {
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
 
-            Button("取消") {
-                dismiss()
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12.5))
-            .foregroundStyle(.secondary)
-            .padding(.bottom, 20)
+            #if os(iOS)
+            Text("只有一台设备？截图二维码，到网易云音乐 App 的扫一扫里选择相册识别，然后回到这里即可")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            #endif
         }
-        .frame(width: 320)
-        .onAppear { startLogin() }
-        .onDisappear { pollTask?.cancel() }
     }
 
     private var overlayVisible: Bool {
@@ -117,23 +180,46 @@ struct LoginSheet: View {
         }
     }
 
-    private func startLogin() {
+    /// Starts (or resumes) the QR login. Polling tolerates transient network
+    /// errors (the app being backgrounded while the user scans) instead of
+    /// giving up on the first failure.
+    private func startLogin(reusingKey: Bool = false) {
         pollTask?.cancel()
-        phase = .loading
-        qrImage = nil
+        let existingKey = reusingKey ? unikey : nil
+        if existingKey == nil {
+            phase = .loading
+            qrImage = nil
+        } else {
+            phase = .waiting
+        }
         pollTask = Task {
             do {
-                let unikey = try await NeteaseAPI.qrKey()
-                let url = NeteaseAPI.qrLoginURL(unikey: unikey)
-                qrImage = Self.generateQR(from: url)
-                phase = .waiting
+                let key: String
+                if let existingKey {
+                    key = existingKey
+                } else {
+                    key = try await NeteaseAPI.qrKey()
+                    unikey = key
+                    qrImage = Self.generateQR(from: NeteaseAPI.qrLoginURL(unikey: key))
+                    phase = .waiting
+                }
 
+                var consecutiveErrors = 0
                 while !Task.isCancelled {
                     try await Task.sleep(for: .seconds(1.2))
-                    let check = try await NeteaseAPI.qrCheck(unikey: unikey)
+                    let check: NeteaseAPI.QRCheckResponse
+                    do {
+                        check = try await NeteaseAPI.qrCheck(unikey: key)
+                        consecutiveErrors = 0
+                    } catch {
+                        consecutiveErrors += 1
+                        if consecutiveErrors >= 15 { throw error }
+                        continue
+                    }
                     switch check.code {
                     case 800:
                         phase = .expired
+                        unikey = nil
                         return
                     case 801:
                         if case .waiting = phase {} else { phase = .waiting }
@@ -153,6 +239,121 @@ struct LoginSheet: View {
                 if !Task.isCancelled {
                     phase = .failed(error.localizedDescription)
                 }
+            }
+        }
+    }
+
+    // MARK: - SMS
+
+    private var smsSection: some View {
+        VStack(spacing: 14) {
+            Text("使用手机号 + 短信验证码登录")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("+86")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("手机号", text: $phone)
+                        .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.phonePad)
+                        .textContentType(.telephoneNumber)
+                        #endif
+                }
+                HStack(spacing: 8) {
+                    TextField("验证码", text: $code)
+                        .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        #endif
+                    Button {
+                        sendCode()
+                    } label: {
+                        if smsSending {
+                            ProgressView().controlSize(.small)
+                        } else if smsCooldown > 0 {
+                            Text("\(smsCooldown) s")
+                                .monospacedDigit()
+                        } else {
+                            Text("获取验证码")
+                        }
+                    }
+                    .frame(width: 96)
+                    .disabled(smsSending || smsCooldown > 0 || phone.count < 11)
+                }
+            }
+            .padding(.horizontal, 32)
+
+            if let smsMessage {
+                Text(smsMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.accent)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Button {
+                loginWithCode()
+            } label: {
+                Group {
+                    if smsLoggingIn {
+                        ProgressView().controlSize(.small).tint(.white)
+                    } else {
+                        Text("登录")
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 200)
+                .padding(.vertical, 9)
+                .background(Theme.accentGradient, in: Capsule())
+            }
+            .buttonStyle(.pressable)
+            .disabled(smsLoggingIn || phone.count < 11 || code.count < 4)
+            .padding(.top, 4)
+        }
+        .frame(minHeight: 280)
+    }
+
+    private func sendCode() {
+        smsSending = true
+        smsMessage = nil
+        Task {
+            defer { smsSending = false }
+            do {
+                try await NeteaseAPI.sendSMSCode(phone: phone)
+                smsMessage = String(localized: "验证码已发送")
+                smsCooldown = 60
+                cooldownTask?.cancel()
+                cooldownTask = Task {
+                    while smsCooldown > 0, !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(1))
+                        smsCooldown -= 1
+                    }
+                }
+            } catch {
+                smsMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func loginWithCode() {
+        smsLoggingIn = true
+        smsMessage = nil
+        Task {
+            defer { smsLoggingIn = false }
+            do {
+                try await NeteaseAPI.loginCellphone(phone: phone, captcha: code)
+                pollTask?.cancel()
+                await account.bootstrap()
+                ToastCenter.shared.show(String(localized: "欢迎回来，\(account.profile?.nickname ?? "")"))
+                dismiss()
+            } catch {
+                smsMessage = error.localizedDescription
             }
         }
     }

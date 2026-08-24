@@ -121,7 +121,7 @@ struct ExploreView: View {
                     }
                 }
 
-                Color.clear.frame(height: 12)
+                PlayerClearanceSpacer()
             }
         }
         .navigationTitle("精选")
@@ -214,8 +214,11 @@ struct ToplistsView: View {
 
     var body: some View {
         ScrollView {
-            ToplistGrid(toplists: toplists)
-                .padding(Theme.Layout.contentInset)
+            VStack(spacing: 0) {
+                ToplistGrid(toplists: toplists)
+                    .padding(Theme.Layout.contentInset)
+                PlayerClearanceSpacer()
+            }
         }
         .navigationTitle("排行榜")
         .task {

@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "Kumone",
     defaultLocalization: "zh-Hans",
-    platforms: [.macOS("15.0"), .iOS("18.0")],
+    platforms: [.macOS("15.0"), .iOS("17.0")],
     products: [
         .executable(name: "Kumone", targets: ["KumoneLauncher"]),
         .library(name: "KumoneCore", targets: ["KumoneCore"]),

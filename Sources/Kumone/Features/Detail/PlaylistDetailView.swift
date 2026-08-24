@@ -133,7 +133,7 @@ struct PlaylistDetailView: View {
                     }
                     .frame(minHeight: 400)
                 }
-                Color.clear.frame(height: isCompact ? 80 : 8)
+                PlayerClearanceSpacer()
             }
         }
         #if os(macOS)

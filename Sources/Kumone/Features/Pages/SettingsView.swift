@@ -4,6 +4,8 @@ struct SettingsView: View {
     @Environment(SettingsManager.self) private var settings
     @Environment(AccountStore.self) private var account
     @State private var cacheSize: String = String(localized: "计算中…")
+    @State private var isCheckingUpdate = false
+    @State private var latestRelease: ReleaseChecker.Release?
 
     var body: some View {
         @Bindable var settings = settings
@@ -59,6 +61,31 @@ struct SettingsView: View {
 
             Section("关于") {
                 LabeledContent("Kumone", value: appVersion)
+                #if os(iOS)
+                Button {
+                    checkForUpdates()
+                } label: {
+                    HStack {
+                        Text("检查更新")
+                        Spacer()
+                        if isCheckingUpdate {
+                            ProgressView().controlSize(.small)
+                        } else if let latest = latestRelease {
+                            Text(String(localized: "发现新版本 \(latest.version)"))
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+                .disabled(isCheckingUpdate)
+                if let latest = latestRelease {
+                    Link(destination: latest.url) {
+                        Label("前往下载", systemImage: "arrow.down.circle")
+                    }
+                    Text("iOS 无法自动更新：下载新版 IPA 后用侧载工具重新安装即可，登录状态和设置会保留")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                #endif
                 Text("网易云音乐第三方客户端 · 数据来自网易云音乐")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -69,6 +96,24 @@ struct SettingsView: View {
         .frame(width: 440, height: 480)
         #endif
         .task { updateCacheSize() }
+    }
+
+    private func checkForUpdates() {
+        isCheckingUpdate = true
+        Task {
+            defer { isCheckingUpdate = false }
+            do {
+                let latest = try await ReleaseChecker.latest()
+                if ReleaseChecker.isNewer(latest.version, than: ReleaseChecker.currentVersion) {
+                    latestRelease = latest
+                } else {
+                    latestRelease = nil
+                    ToastCenter.shared.show(String(localized: "已是最新版本"))
+                }
+            } catch {
+                ToastCenter.shared.show(error.localizedDescription)
+            }
+        }
     }
 
     private var appVersion: String {

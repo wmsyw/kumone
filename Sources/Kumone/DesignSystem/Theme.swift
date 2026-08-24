@@ -54,6 +54,21 @@ enum AppAnimation {
 }
 
 extension View {
+    /// Hides the toolbar background; `toolbarBackgroundVisibility` is
+    /// macOS 15+/iOS 18+, so iOS 17 falls back to `toolbarBackground`.
+    @ViewBuilder
+    func compatHiddenToolbarBackground() -> some View {
+        #if os(macOS)
+        toolbarBackgroundVisibility(.hidden, for: .automatic)
+        #else
+        if #available(iOS 18.0, *) {
+            toolbarBackgroundVisibility(.hidden, for: .automatic)
+        } else {
+            toolbarBackground(.hidden, for: .navigationBar)
+        }
+        #endif
+    }
+
     /// Glass background with a graceful material fallback on macOS 15.
     @ViewBuilder
     func compatGlass(interactive: Bool = false, in shape: some Shape) -> some View {

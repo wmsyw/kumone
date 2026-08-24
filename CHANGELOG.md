@@ -6,6 +6,31 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.2.5 - 2026-08-23
+
+### Added / 新增
+
+- Phone number + SMS code login, alongside QR (single-device iOS users no longer need a second phone) (#10)
+- QR login survives app switching: polling tolerates background network errors and resumes when you return — screenshot the QR, scan it from your photo library in the NetEase app, come back (#10)
+- iOS: Settings → About → Check for Updates looks up the latest GitHub release and links to it; README documents sideload install and update (#9)
+- 手机号 + 短信验证码登录，与扫码并列（iOS 单设备用户不再需要第二台手机）（#10）
+- 扫码登录支持切换 App：轮询容忍后台断网并在回到前台时续上 —— 截图二维码、去网易云 App 相册识别、再回来即可（#10）
+- iOS：设置 → 关于 → 检查更新 会查询 GitHub 最新版本并给出下载链接；README 补充侧载安装与更新说明（#9）
+
+### Fixed / 修复
+
+- The last song of a list (e.g. Daily Recommendations) could be hidden behind the player bar; pages now reserve the clearance explicitly instead of relying on safe-area padding, which was unreliable inside navigation stacks (#12)
+- Hovering the feature cards / shelf cards on Home no longer clips the enlarged card at the top and bottom (#11)
+- 列表最后一首（如每日推荐）可能被播放条遮住的问题；页面改为显式预留净空，不再依赖导航栈内不可靠的安全区内边距（#12）
+- 首页功能卡片 / 货架卡片 hover 放大时上下不再被裁切（#11）
+
+## 0.2.4 - 2026-08-23
+
+### Improved / 改进
+
+- The iOS deployment target is lowered from 18.0 to 17.0 (iPhone XS and later); iOS 18-only APIs now have iOS 17 fallbacks. iOS 16 is not feasible — the app's state layer is built on the Observation framework, which requires iOS 17
+- iOS 最低系统要求从 18.0 降至 17.0（iPhone XS 及之后机型均可安装）；iOS 18 专属 API 已补 iOS 17 回退。iOS 16 不可行 —— 应用状态层基于 Observation 框架，其最低要求即 iOS 17
+
 ## 0.2.3 - 2026-08-22
 
 ### Fixed / 修复

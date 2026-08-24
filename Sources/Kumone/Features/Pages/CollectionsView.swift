@@ -79,7 +79,7 @@ struct CollectionsView: View {
                         }
                     }
                 }
-                Color.clear.frame(height: 8)
+                PlayerClearanceSpacer()
             }
         }
         .navigationTitle("我的收藏")

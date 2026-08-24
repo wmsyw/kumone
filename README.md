@@ -71,6 +71,19 @@ it into Applications.
 The app is signed with a Developer ID certificate and notarized by Apple, with
 built-in Sparkle automatic updates (menu bar: Kumone → Check for Updates…).
 
+### iOS / iPadOS (sideload)
+
+Every release ships an **unsigned** `Kumone-iOS-x.y.z.ipa` (iOS 17+). Kumone
+is an unofficial client and will not be on the App Store or TestFlight, so
+install it with a sideloading tool that signs the IPA with your own Apple ID —
+[AltStore](https://altstore.io), [SideStore](https://sidestore.io),
+[Sideloadly](https://sideloadly.io) or Xcode all work.
+
+Updating: iOS apps can't replace themselves. Settings → About → **Check for
+Updates** tells you when a newer release exists and links to it; download the
+new IPA and reinstall with the same tool — sign-in state and settings are kept.
+AltStore / SideStore can also track the release automatically via a source.
+
 ## Building
 
 Requires macOS 15+ and Xcode 26+.

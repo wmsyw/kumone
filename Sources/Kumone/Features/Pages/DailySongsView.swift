@@ -31,7 +31,7 @@ struct DailySongsView: View {
                     TrackListView(tracks: tracks, source: .daily)
                         .padding(.horizontal, Theme.Layout.contentInset - 10)
                 }
-                Color.clear.frame(height: 8)
+                PlayerClearanceSpacer()
             }
         }
         .navigationTitle("每日推荐")

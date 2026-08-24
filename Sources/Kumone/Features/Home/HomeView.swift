@@ -210,7 +210,7 @@ struct HomeView: View {
                 }
             }
 
-            Color.clear.frame(height: 8)
+            PlayerClearanceSpacer()
         }
         .padding(.vertical, Theme.Layout.contentInset - 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -264,7 +264,9 @@ struct HomeView: View {
                 }
                 Color.clear.frame(width: max(0, Theme.Layout.contentInset - 16), height: 1)
             }
+            .padding(.vertical, 6)
         }
+        .scrollClipDisabled() // hover scale must not be clipped (#11)
     }
 
     private func startHeartbeatMode() {

@@ -102,7 +102,9 @@ struct Shelf<Content: View>: View {
                     content()
                     Color.clear.frame(width: max(0, Theme.Layout.contentInset - spacing), height: 1)
                 }
+                .padding(.vertical, 6)
             }
+            .scrollClipDisabled() // hover scale must not be clipped (#11)
         }
     }
 }

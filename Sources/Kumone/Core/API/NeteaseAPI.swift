@@ -51,6 +51,25 @@ enum NeteaseAPI {
         return try JSONDecoder().decode(QRCheckResponse.self, from: data)
     }
 
+    /// Sends an SMS verification code for phone-number login.
+    static func sendSMSCode(phone: String, countryCode: String = "86") async throws {
+        let data = try await client.weapi("/sms/sendcode", ["cellphone": phone, "ctcode": countryCode],
+                                          cookieOverrides: ["os": "ios", "appver": "8.20.21"])
+        _ = try client.decoded(CodeOnly.self, from: data)
+    }
+
+    /// Phone-number login with an SMS code. Auth cookies arrive via Set-Cookie.
+    static func loginCellphone(phone: String, captcha: String, countryCode: String = "86") async throws {
+        let data = try await client.weapi("/login/cellphone",
+                                          ["phone": phone, "countrycode": countryCode,
+                                           "captcha": captcha, "rememberLogin": "true"],
+                                          cookieOverrides: ["os": "ios", "appver": "8.20.21"])
+        _ = try client.decoded(CodeOnly.self, from: data)
+        guard client.isLoggedIn else {
+            throw NeteaseAPIError.business(code: -1, message: String(localized: "登录失败，请重试"))
+        }
+    }
+
     static func logout() async {
         _ = try? await client.weapi("/logout")
         client.clearAuthCookies()

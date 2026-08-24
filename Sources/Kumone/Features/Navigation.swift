@@ -97,11 +97,26 @@ extension View {
         modifier(PlayerChromeModifier(detailWidth: detailWidth))
     }
 
+    /// Pages clear the floating player bar with an explicit trailing
+    /// `PlayerClearanceSpacer` in their scroll content; safeAreaPadding
+    /// proved unreliable inside navigation stacks (#12).
     func playerContentInset() -> some View {
-        safeAreaPadding(.bottom, Theme.Layout.playerChromeClearance)
+        self
     }
 
     func appDestinations() -> some View {
         modifier(DestinationsModifier())
+    }
+}
+
+/// Trailing spacer for scrollable pages so the last row clears the
+/// floating player bar.
+struct PlayerClearanceSpacer: View {
+    var body: some View {
+        #if os(iOS)
+        Color.clear.frame(height: 80) // mini player bar above the tab bar
+        #else
+        Color.clear.frame(height: Theme.Layout.playerChromeClearance + 8)
+        #endif
     }
 }
