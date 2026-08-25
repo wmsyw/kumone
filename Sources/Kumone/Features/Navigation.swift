@@ -64,6 +64,9 @@ enum Destination: Hashable {
     case artist(Int)
     case daily
     case toplists
+    case recents
+    case collections
+    case cloud
     case search(String)
 }
 
@@ -83,6 +86,12 @@ struct DestinationsModifier: ViewModifier {
                     DailySongsView()
                 case .toplists:
                     ToplistsView()
+                case .recents:
+                    RecentsView()
+                case .collections:
+                    CollectionsView()
+                case .cloud:
+                    CloudView()
                 case .search(let query):
                     SearchView(query: query)
                 }

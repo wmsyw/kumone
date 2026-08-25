@@ -5,7 +5,10 @@ import Foundation
 enum ReleaseChecker {
     struct Release {
         let version: String
+        /// The release page (fallback download link).
         let url: URL
+        /// Direct download URL of the iOS IPA asset, when present.
+        let ipaURL: URL?
     }
 
     static let releasesPage = URL(string: "https://github.com/missuo/kumone/releases/latest")!
@@ -23,7 +26,11 @@ enum ReleaseChecker {
               let tag = obj["tag_name"] as? String,
               let html = obj["html_url"] as? String, let url = URL(string: html)
         else { throw NeteaseAPIError.decoding("release") }
-        return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, url: url)
+        let assets = obj["assets"] as? [[String: Any]] ?? []
+        let ipa = assets.first { ($0["name"] as? String)?.lowercased().hasSuffix(".ipa") == true }
+        let ipaURL = (ipa?["browser_download_url"] as? String).flatMap(URL.init)
+        return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag,
+                       url: url, ipaURL: ipaURL)
     }
 
     /// True when `remote` is newer than `local` (numeric dotted compare).

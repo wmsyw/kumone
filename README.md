@@ -84,6 +84,17 @@ Updates** tells you when a newer release exists and links to it; download the
 new IPA and reinstall with the same tool — sign-in state and settings are kept.
 AltStore / SideStore can also track the release automatically via a source.
 
+#### In-app auto-update (TrollStore only)
+
+On a device with **[TrollStore](https://github.com/opa334/TrollStore)** (巨魔),
+Kumone updates itself: Settings → About → **Check for Updates** (it also checks
+on launch) downloads the new IPA with a progress ring and hands it to TrollStore
+via `apple-magnifier://install?url=…` for a one-tap, fully automatic install —
+the same mechanism Dopamine uses. This works **only under TrollStore**: a plain
+AltStore/SideStore sideload is signed with a personal certificate and has no way
+to install an IPA on-device, so there it degrades to opening the release page
+for a manual re-sideload.
+
 ## Building
 
 Requires macOS 15+ and Xcode 26+.

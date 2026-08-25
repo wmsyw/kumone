@@ -193,7 +193,7 @@ enum UnblockService {
             keyword(for: track)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let endpoint =
-            "http://search.kuwo.cn/r.s?correct=1&vipver=1&stype=comprehensive&encoding=utf8&rformat=json&mobi=1&show_copyright_off=1&searchapi=6&all=\(query)"
+            "https://search.kuwo.cn/r.s?correct=1&vipver=1&stype=comprehensive&encoding=utf8&rformat=json&mobi=1&show_copyright_off=1&searchapi=6&all=\(query)"
         guard let data = await get(endpoint, provider: "kuwo search"),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let content = object["content"] as? [[String: Any]], content.count >= 2,
@@ -213,7 +213,7 @@ enum UnblockService {
         var candidates: [URL] = []
         for song in matches.isEmpty ? Array(songs.prefix(1)) : matches {
             let convert =
-                "http://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(song.0)"
+                "https://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(song.0)"
             guard
                 let body = await get(convert, provider: "kuwo convert", userAgent: "okhttp/3.10.0"),
                 let text = String(data: body, encoding: .utf8),
@@ -259,7 +259,7 @@ enum UnblockService {
                 let key = Insecure.MD5.hash(data: Data("\(hash)kgcloudv2".utf8))
                     .map { String(format: "%02x", $0) }.joined()
                 let tracker =
-                    "http://trackercdn.kugou.com/i/v2/?key=\(key)&hash=\(hash)&appid=1005&pid=2&cmd=25&behavior=play&album_id=\(song.1)"
+                    "https://trackercdn.kugou.com/i/v2/?key=\(key)&hash=\(hash)&appid=1005&pid=2&cmd=25&behavior=play&album_id=\(song.1)"
                 guard let body = await get(tracker, provider: "kugou tracker"),
                     let result = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
                 else { continue }

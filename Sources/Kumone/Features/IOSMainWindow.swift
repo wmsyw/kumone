@@ -37,6 +37,11 @@ public struct IOSMainWindow: View {
         .environment(\.openLogin, { showLogin = true })
         .task {
             await account.bootstrap()
+            // Quiet auto-check on launch: only surfaces a sheet if newer.
+            IOSUpdater.shared.check(interactive: false)
+        }
+        .sheet(isPresented: Bindable(IOSUpdater.shared).showSheet) {
+            IOSUpdaterSheet()
         }
         .sheet(isPresented: $showLogin) {
             LoginSheet()
@@ -255,19 +260,13 @@ struct IOSLibraryView: View {
                     NavigationLink(value: Destination.daily) {
                         Label("每日推荐", systemImage: "calendar")
                     }
-                    NavigationLink {
-                        RecentsView()
-                    } label: {
+                    NavigationLink(value: Destination.recents) {
                         Label("最近播放", systemImage: "clock.fill")
                     }
-                    NavigationLink {
-                        CollectionsView()
-                    } label: {
+                    NavigationLink(value: Destination.collections) {
                         Label("我的收藏", systemImage: "star.fill")
                     }
-                    NavigationLink {
-                        CloudView()
-                    } label: {
+                    NavigationLink(value: Destination.cloud) {
                         Label("音乐云盘", systemImage: "icloud.fill")
                     }
                 }

@@ -241,6 +241,12 @@ struct NowPlayingView: View {
                     player.fmTrash()
                 }
             } else {
+                circleButton(
+                    icon: "shuffle", size: 14,
+                    tint: player.shuffleEnabled ? Theme.accent : nil
+                ) {
+                    player.toggleShuffle()
+                }
                 circleButton(icon: "backward.fill", size: 16) {
                     player.previous()
                 }
@@ -273,15 +279,11 @@ struct NowPlayingView: View {
                     .frame(width: 40, height: 40)
             } else {
                 circleButton(
-                    icon: player.shuffleEnabled ? "shuffle" : (player.repeatMode == .one ? "repeat.1" : "repeat"),
+                    icon: player.repeatMode == .one ? "repeat.1" : "repeat",
                     size: 14,
-                    tint: player.shuffleEnabled || player.repeatMode != .off ? Theme.accent : nil
+                    tint: player.repeatMode != .off ? Theme.accent : nil
                 ) {
-                    if player.shuffleEnabled {
-                        player.toggleShuffle()
-                    } else {
-                        player.cycleRepeatMode()
-                    }
+                    player.cycleRepeatMode()
                 }
             }
         }

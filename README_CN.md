@@ -76,6 +76,10 @@ brew install owo-network/brew/kumone --cask
 
 更新：iOS 应用无法自我替换。设置 → 关于 → **检查更新** 会提示是否有新版本并给出下载链接，下载新 IPA 后用同一工具重新安装即可，登录状态与设置会保留。AltStore / SideStore 也可通过 source 自动追踪发布。
 
+#### 应用内自动更新（仅限 TrollStore / 巨魔）
+
+在装有 **[TrollStore](https://github.com/opa334/TrollStore)（巨魔）** 的设备上，Kumone 可自我更新：设置 → 关于 → **检查更新**（启动时也会检查）会带进度圆环下载新 IPA，并通过 `apple-magnifier://install?url=…` 移交给 TrollStore 一键自动安装 —— 与 Dopamine 的机制相同。此功能**仅在 TrollStore 下可用**：普通 AltStore/SideStore 侧载版以个人证书签名，没有在设备上安装 IPA 的权限，因此会降级为打开发布页手动重新侧载。
+
 ## 构建
 
 要求 macOS 15+、Xcode 26+。
