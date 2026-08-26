@@ -6,6 +6,13 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.3.8 - 2026-08-25
+
+### Fixed / 修复
+
+- macOS / iPad: after opening a card from the Home page (每日推荐, a playlist, album or artist), the sidebar looked stuck — tapping another section did nothing until you pressed Back. Those cards used closure-based `NavigationLink`s, whose pushes live in the stack's internal state rather than the bound `NavigationPath`, so the sidebar's path reset couldn't pop them (and an `.id()` reset does not work inside `NavigationSplitView` — verified on device). The Home cards now use value-based navigation, which the existing sidebar-switch reset clears correctly. (#29)
+- macOS / iPad：从推荐页打开卡片（每日推荐、歌单、专辑、歌手）后，侧边栏看起来卡住——点其他分区没反应，必须先点返回。这些卡片用的是闭包式 `NavigationLink`，其压栈存在于导航栈内部状态、而非绑定的 `NavigationPath`，所以侧边栏的 path 重置弹不掉它们（而 `.id()` 重置在 `NavigationSplitView` 里无效——已在真机验证）。推荐页卡片改为值驱动导航，配合现有的侧边栏切换重置即可正确清空。（#29）
+
 ## 0.3.7 - 2026-08-25
 
 ### Fixed / 修复
