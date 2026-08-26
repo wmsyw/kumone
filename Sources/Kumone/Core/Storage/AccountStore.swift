@@ -1,18 +1,16 @@
 import Foundation
-import Observation
 
 /// Login state and the user's library: profile, liked track IDs, playlists.
 @MainActor
-@Observable
-final class AccountStore {
+final class AccountStore: ObservableObject {
     static let shared = AccountStore()
 
-    var profile: UserProfile?
-    var likedTrackIDs: Set<Int> = []
-    var userPlaylists: [PlaylistSummary] = []
-    var likedAlbums: [AlbumSummary] = []
-    var likedArtists: [ArtistSummary] = []
-    var isBootstrapped = false
+    @Published var profile: UserProfile?
+    @Published var likedTrackIDs: Set<Int> = []
+    @Published var userPlaylists: [PlaylistSummary] = []
+    @Published var likedAlbums: [AlbumSummary] = []
+    @Published var likedArtists: [ArtistSummary] = []
+    @Published var isBootstrapped = false
 
     var isLoggedIn: Bool { NeteaseClient.shared.isLoggedIn && profile != nil }
     var hasAuthCookie: Bool { NeteaseClient.shared.isLoggedIn }
@@ -110,11 +108,10 @@ struct Toast: Identifiable, Equatable {
 }
 
 @MainActor
-@Observable
-final class ToastCenter {
+final class ToastCenter: ObservableObject {
     static let shared = ToastCenter()
 
-    var current: Toast?
+    @Published var current: Toast?
     private var dismissTask: Task<Void, Never>?
 
     private init() {}

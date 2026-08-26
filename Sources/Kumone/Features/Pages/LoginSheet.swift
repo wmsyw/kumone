@@ -33,7 +33,7 @@ struct LoginSheet: View {
     @State private var smsMessage: String?
     @State private var cooldownTask: Task<Void, Never>?
 
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var account: AccountStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -77,12 +77,12 @@ struct LoginSheet: View {
         }
         // Coming back from the NetEase app (single-device flow): if polling
         // died while we were in the background, pick it up again.
-        .onChange(of: scenePhase) {
+        .onChange(of: scenePhase) { _ in
             guard scenePhase == .active, mode == .qr else { return }
             if case .failed = phase { startLogin(reusingKey: true) }
             else if pollTask == nil || pollTask?.isCancelled == true { startLogin(reusingKey: true) }
         }
-        .onChange(of: mode) {
+        .onChange(of: mode) { _ in
             if mode == .qr, case .failed = phase { startLogin(reusingKey: true) }
         }
     }
@@ -246,54 +246,66 @@ struct LoginSheet: View {
     // MARK: - SMS
 
     private var smsSection: some View {
-        VStack(spacing: 14) {
-            Text("使用手机号 + 短信验证码登录")
-                .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                Text("可能被网易云风控拦截而不可用，推荐使用扫码登录")
+                    .font(.system(size: 11.5))
+                    .multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, 28)
 
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("+86")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "iphone")
+                        .font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 20)
+                    Text("+86").font(.system(size: 15, weight: .medium))
+                    Rectangle().fill(.quaternary).frame(width: 1, height: 20)
                     TextField("手机号", text: $phone)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain).font(.system(size: 15))
                         #if os(iOS)
-                        .keyboardType(.phonePad)
-                        .textContentType(.telephoneNumber)
+                        .keyboardType(.phonePad).textContentType(.telephoneNumber)
                         #endif
                 }
-                HStack(spacing: 8) {
+                .fieldChrome()
+
+                HStack(spacing: 10) {
                     TextField("验证码", text: $code)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain).font(.system(size: 15))
                         #if os(iOS)
-                        .keyboardType(.numberPad)
-                        .textContentType(.oneTimeCode)
+                        .keyboardType(.numberPad).textContentType(.oneTimeCode)
                         #endif
                     Button {
                         sendCode()
                     } label: {
-                        if smsSending {
-                            ProgressView().controlSize(.small)
-                        } else if smsCooldown > 0 {
-                            Text("\(smsCooldown) s")
-                                .monospacedDigit()
-                        } else {
-                            Text("获取验证码")
+                        Group {
+                            if smsSending {
+                                ProgressView().controlSize(.small)
+                            } else if smsCooldown > 0 {
+                                Text("\(smsCooldown)s").monospacedDigit()
+                            } else {
+                                Text("获取验证码")
+                            }
                         }
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(canSendCode ? Theme.accent : .secondary)
                     }
-                    .frame(width: 96)
-                    .disabled(smsSending || smsCooldown > 0 || phone.count < 11)
+                    .buttonStyle(.plain).disabled(!canSendCode)
                 }
+                .fieldChrome()
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 28)
 
             if let smsMessage {
                 Text(smsMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.accent)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .font(.system(size: 12)).foregroundStyle(Theme.accent)
+                    .multilineTextAlignment(.center).padding(.horizontal, 24)
             }
 
             Button {
@@ -306,18 +318,22 @@ struct LoginSheet: View {
                         Text("登录")
                     }
                 }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 200)
-                .padding(.vertical, 9)
-                .background(Theme.accentGradient, in: Capsule())
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                .background(
+                    Capsule().fill(canLogin ? AnyShapeStyle(Theme.accentGradient)
+                                            : AnyShapeStyle(Color.secondary.opacity(0.25)))
+                )
             }
-            .buttonStyle(.pressable)
-            .disabled(smsLoggingIn || phone.count < 11 || code.count < 4)
-            .padding(.top, 4)
+            .buttonStyle(.pressable).disabled(!canLogin)
+            .padding(.horizontal, 28).padding(.top, 2)
         }
-        .frame(minHeight: 280)
+        .frame(minHeight: 300)
     }
+
+    private var canSendCode: Bool { !smsSending && smsCooldown == 0 && phone.count >= 11 }
+    private var canLogin: Bool { !smsLoggingIn && phone.count >= 11 && code.count >= 4 }
+
 
     private func sendCode() {
         smsSending = true
@@ -371,5 +387,14 @@ struct LoginSheet: View {
         #elseif os(iOS)
         return UIImage(cgImage: cgImage)
         #endif
+    }
+}
+
+private extension View {
+    func fieldChrome() -> some View {
+        self
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.06), lineWidth: 1))
     }
 }

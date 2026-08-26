@@ -4,23 +4,25 @@ import SwiftUI
 public struct KumoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    @State private var player = PlayerService.shared
-    @State private var account = AccountStore.shared
-    @State private var settings = SettingsManager.shared
-    @State private var toasts = ToastCenter.shared
+    @StateObject private var player = PlayerService.shared
+    @StateObject private var account = AccountStore.shared
+    @StateObject private var settings = SettingsManager.shared
+    @StateObject private var toasts = ToastCenter.shared
 
     public init() {}
 
     public var body: some Scene {
         WindowGroup("Kumone", id: "main") {
             MainWindow()
-                .environment(player)
-                .environment(account)
-                .environment(settings)
-                .environment(toasts)
+                .environmentObject(player)
+                .environmentObject(account)
+                .environmentObject(settings)
+                .environmentObject(toasts)
                 .tint(Theme.accent)
                 .preferredColorScheme(settings.appearance.colorScheme)
-                .frame(minWidth: Theme.Layout.minWindowWidth,
+                .frame(minWidth: player.showNowPlaying
+                           ? Theme.Layout.minWindowWidthSidebarCollapsed
+                           : Theme.Layout.minWindowWidth,
                        minHeight: Theme.Layout.minWindowHeight)
         }
         .defaultSize(width: Theme.Layout.defaultWindowWidth,
@@ -73,8 +75,8 @@ public struct KumoneApp: App {
 
         Settings {
             SettingsView()
-                .environment(account)
-                .environment(settings)
+                .environmentObject(account)
+                .environmentObject(settings)
                 .tint(Theme.accent)
                 .preferredColorScheme(settings.appearance.colorScheme)
         }
@@ -108,6 +110,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return event
         }
+    }
+
+    @MainActor
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        DockMenu.shared.makeMenu()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

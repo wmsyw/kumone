@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-import Observation
 
 enum RepeatMode: String, CaseIterable {
     case off, all, one
@@ -31,49 +30,113 @@ enum PlaySource: Equatable {
     }
 }
 
+/// Where playback started from — listed under "Recently Played" in the Dock
+/// menu, where picking one reloads it and starts playing again.
+///
+/// This is deliberately separate from `PlaySource`: heartbeat mode plays out
+/// of the liked-songs playlist for scrobbling purposes, but as a *place* it is
+/// its own thing, and the recents page has no source at all.
+struct PlayContext: Codable, Hashable {
+    enum Kind: String, Codable {
+        /// Reloaded by id.
+        case playlist, album, artist
+        /// Fixed per-account entry points, each reloaded from its own API.
+        case daily, cloud, recents, heartbeat, fm
+    }
+
+    let kind: Kind
+    /// Zero for the fixed entry points, which have no id of their own.
+    let id: Int
+    let name: String
+
+    static func playlist(id: Int, name: String) -> PlayContext {
+        .init(kind: .playlist, id: id, name: name)
+    }
+
+    static func album(id: Int, name: String) -> PlayContext {
+        .init(kind: .album, id: id, name: name)
+    }
+
+    static func artist(id: Int, name: String) -> PlayContext {
+        .init(kind: .artist, id: id, name: name)
+    }
+
+    static var daily: PlayContext { .init(kind: .daily, id: 0, name: String(localized: "每日推荐")) }
+    static var cloud: PlayContext { .init(kind: .cloud, id: 0, name: String(localized: "音乐云盘")) }
+    static var recents: PlayContext { .init(kind: .recents, id: 0, name: String(localized: "最近播放")) }
+    static var heartbeat: PlayContext { .init(kind: .heartbeat, id: 0, name: String(localized: "心动模式")) }
+    static var fm: PlayContext { .init(kind: .fm, id: 0, name: String(localized: "私人漫游")) }
+
+    /// Identity is the place, not its current title — a renamed playlist is
+    /// still the same entry in the recents list.
+    static func == (lhs: PlayContext, rhs: PlayContext) -> Bool {
+        lhs.kind == rhs.kind && lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(id)
+    }
+}
+
 enum RightPanel {
     case lyrics, queue
 }
 
 /// The playback engine: queue, shuffle/repeat, personal FM, URL resolution,
 /// lyrics, scrobbling. Modeled on YesPlayMusic's Player class, backed by AVPlayer.
+/// High-frequency playback position, isolated so per-tick updates only
+/// re-render the scrubbers/lyrics that observe it — not every view holding
+/// the PlayerService.
 @MainActor
-@Observable
-final class PlayerService {
+final class PlaybackClock: ObservableObject {
+    @Published var progress: TimeInterval = 0
+}
+
+@MainActor
+final class PlayerService: ObservableObject {
     static let shared = PlayerService()
 
     // MARK: - Observable state
 
-    private(set) var queue: [Track] = []
-    private(set) var shuffledQueue: [Track] = []
-    private(set) var playNextList: [Track] = []
-    private(set) var currentIndex = -1
-    private(set) var currentTrack: Track?
-    private(set) var source: PlaySource = .none
-    private(set) var isPlaying = false
-    private(set) var isBuffering = false
-    private(set) var duration: TimeInterval = 0
-    private(set) var servedQuality: String?
-    private(set) var unblockSource: String?
-    private(set) var isTrial = false
-    var progress: TimeInterval = 0
-    var repeatMode: RepeatMode = .off {
+    @Published private(set) var queue: [Track] = []
+    @Published private(set) var shuffledQueue: [Track] = []
+    @Published private(set) var playNextList: [Track] = []
+    @Published private(set) var currentIndex = -1
+    @Published private(set) var currentTrack: Track?
+    @Published private(set) var source: PlaySource = .none
+    @Published private(set) var isPlaying = false
+    @Published private(set) var isBuffering = false
+    @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var servedQuality: String?
+    @Published private(set) var unblockSource: String?
+    @Published private(set) var isTrial = false
+    let clock = PlaybackClock()
+    /// Passthrough to the clock so existing `progress` reads/writes keep working.
+    var progress: TimeInterval {
+        get { clock.progress }
+        set { clock.progress = newValue }
+    }
+    @Published var repeatMode: RepeatMode = .off {
         didSet { UserDefaults.standard.set(repeatMode.rawValue, forKey: "player.repeat") }
     }
 
-    private(set) var shuffleEnabled = false
-    var volume: Float = 1 {
+    @Published private(set) var shuffleEnabled = false
+    @Published var volume: Float = 1 {
         didSet {
             engine.volume = volume
             UserDefaults.standard.set(volume, forKey: "player.volume")
         }
     }
 
-    private(set) var isFMMode = false
-    private(set) var fmUpcoming: [Track] = []
-    private(set) var lyrics: ParsedLyrics?
-    var activePanel: RightPanel?
-    var showNowPlaying = false
+    @Published private(set) var isFMMode = false
+    @Published private(set) var fmUpcoming: [Track] = []
+    /// Where playback was most recently started from, newest first —
+    /// surfaced as "Recently Played" in the Dock menu.
+    @Published private(set) var recentContexts: [PlayContext] = []
+    @Published private(set) var lyrics: ParsedLyrics?
+    @Published var activePanel: RightPanel?
+    @Published var showNowPlaying = false
 
     /// The list the player is walking through (shuffled or ordered).
     var activeQueue: [Track] { shuffleEnabled ? shuffledQueue : queue }
@@ -199,8 +262,13 @@ final class PlayerService {
 
     // MARK: - Entry points
 
-    func play(tracks: [Track], source: PlaySource, startAt track: Track? = nil) {
+    /// - Parameter context: the place these tracks came from. Supplying it
+    ///   lists that place in the Dock menu's recently played section; callers
+    ///   playing an ad-hoc selection (search results, a single track) omit it.
+    func play(tracks: [Track], source: PlaySource, startAt track: Track? = nil,
+              context: PlayContext? = nil) {
         guard !tracks.isEmpty else { return }
+        if let context { recordRecent(context) }
         isFMMode = false
         queue = tracks
         self.source = source
@@ -335,6 +403,7 @@ final class PlayerService {
 
     func startFM() {
         guard !isFMMode || !isPlaying else { return }
+        recordRecent(.fm)
         isFMMode = true
         shuffleEnabled = false
         repeatMode = .off
@@ -669,11 +738,73 @@ final class PlayerService {
 
     // MARK: - Persistence
 
+    private static let recentContextsLimit = 6
+
+    private func recordRecent(_ context: PlayContext) {
+        recentContexts.removeAll { $0 == context }
+        recentContexts.insert(context, at: 0)
+        if recentContexts.count > Self.recentContextsLimit {
+            recentContexts.removeLast(recentContexts.count - Self.recentContextsLimit)
+        }
+    }
+
+    /// Reloads a place from the recents list and starts playing it again.
+    func play(context: PlayContext) {
+        // Personal FM is a stream, not a fixed list — restart it in place.
+        guard context.kind != .fm else { return startFM() }
+        Task {
+            do {
+                guard let resolved = try await resolve(context) else { return }
+                play(tracks: resolved.tracks, source: resolved.source, context: context)
+            } catch {
+                ToastCenter.shared.show(error.localizedDescription)
+            }
+        }
+    }
+
+    private func resolve(_ context: PlayContext) async throws -> (tracks: [Track], source: PlaySource)? {
+        switch context.kind {
+        case .fm:
+            return nil
+        case .album:
+            return (try await NeteaseAPI.album(id: context.id).songs, .album(context.id))
+        case .artist:
+            return (try await NeteaseAPI.artist(id: context.id).hotSongs, .artist(context.id))
+        case .daily:
+            return (try await NeteaseAPI.dailyRecommendSongs(), .daily)
+        case .cloud:
+            let songs = try await NeteaseAPI.cloudSongs().data?.compactMap(\.simpleSong) ?? []
+            return (songs, .cloud)
+        case .recents:
+            guard let uid = AccountStore.shared.profile?.userId else { return nil }
+            return (try await NeteaseAPI.playRecords(uid: uid, week: false).map(\.song), .none)
+        case .heartbeat:
+            // Regenerated from a fresh seed, the same way the Home card does it.
+            guard let liked = AccountStore.shared.likedSongsPlaylist,
+                  let seed = AccountStore.shared.likedTrackIDs.randomElement() else { return nil }
+            let tracks = try await NeteaseAPI.intelligenceList(songID: seed, playlistID: liked.id)
+            return (tracks, .playlist(liked.id))
+        case .playlist:
+            let response = try await NeteaseAPI.playlistDetail(id: context.id)
+            var tracks = response.playlist.tracks
+            // /v6/playlist/detail only carries the first page of tracks.
+            let remaining = response.playlist.trackIds.map(\.id).dropFirst(tracks.count)
+            for chunk in stride(from: 0, to: remaining.count, by: 500)
+                .map({ Array(remaining.dropFirst($0).prefix(500)) }) {
+                guard let more = try? await NeteaseAPI.songDetails(ids: chunk) else { break }
+                tracks += more.songs
+            }
+            return (tracks, .playlist(context.id))
+        }
+    }
+
     private struct PersistedState: Codable {
         var queue: [Track]
         var currentID: Int?
         var repeatMode: String
         var shuffle: Bool
+        /// Optional so state files written before recents existed still decode.
+        var recentContexts: [PlayContext]?
     }
 
     private func persistState() {
@@ -681,7 +812,8 @@ final class PlayerService {
             queue: Array(queue.prefix(1000)),
             currentID: currentTrack?.id,
             repeatMode: repeatMode.rawValue,
-            shuffle: shuffleEnabled
+            shuffle: shuffleEnabled,
+            recentContexts: recentContexts
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = Self.stateFileURL
@@ -692,9 +824,13 @@ final class PlayerService {
 
     private func restoreState() {
         guard let data = try? Data(contentsOf: Self.stateFileURL),
-            let state = try? JSONDecoder().decode(PersistedState.self, from: data),
-            !state.queue.isEmpty
+              let state = try? JSONDecoder().decode(PersistedState.self, from: data)
         else { return }
+        // Recents outlive the queue: restore them before bailing out on an
+        // empty queue, or the next played track persists an empty list over
+        // them and the Dock menu loses its history for good.
+        recentContexts = Array((state.recentContexts ?? []).prefix(Self.recentContextsLimit))
+        guard !state.queue.isEmpty else { return }
         queue = state.queue
         shuffleEnabled = state.shuffle
         if shuffleEnabled {

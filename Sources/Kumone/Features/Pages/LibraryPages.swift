@@ -7,8 +7,8 @@ struct RecentsView: View {
     @State private var week = false
     @State private var isLoading = true
 
-    @Environment(AccountStore.self) private var account
-    @Environment(PlayerService.self) private var player
+    @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var player: PlayerService
 
     var body: some View {
         ScrollView {
@@ -25,7 +25,7 @@ struct RecentsView: View {
                     Spacer()
 
                     Button {
-                        player.play(tracks: records.map(\.song), source: .none)
+                        player.play(tracks: records.map(\.song), source: .none, context: .recents)
                     } label: {
                         Label("播放全部", systemImage: "play.fill")
                             .font(.system(size: 12.5, weight: .semibold))
@@ -68,7 +68,8 @@ struct RecentsView: View {
                     style: .compact,
                     trailingText: String(localized: "\(record.playCount) 次")
                 ) {
-                    player.play(tracks: records.map(\.song), source: .none, startAt: record.song)
+                    player.play(tracks: records.map(\.song), source: .none, startAt: record.song,
+                                   context: .recents)
                 }
             }
         }
@@ -92,7 +93,7 @@ struct CloudView: View {
     @State private var sizeInfo: String?
     @State private var isLoading = true
 
-    @Environment(PlayerService.self) private var player
+    @EnvironmentObject private var player: PlayerService
 
     var body: some View {
         ScrollView {
@@ -105,7 +106,7 @@ struct CloudView: View {
                     }
                     Spacer()
                     Button {
-                        player.play(tracks: tracks, source: .cloud)
+                        player.play(tracks: tracks, source: .cloud, context: .cloud)
                     } label: {
                         Label("播放全部", systemImage: "play.fill")
                             .font(.system(size: 12.5, weight: .semibold))
@@ -128,7 +129,7 @@ struct CloudView: View {
                                    subtitle: "在网易云音乐客户端上传的歌曲会出现在这里")
                         .frame(minHeight: 300)
                 } else {
-                    TrackListView(tracks: tracks, style: .compact, source: .cloud)
+                    TrackListView(tracks: tracks, style: .compact, source: .cloud, context: .cloud)
                         .padding(.horizontal, Theme.Layout.contentInset - 10)
                 }
                 PlayerClearanceSpacer()

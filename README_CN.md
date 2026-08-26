@@ -72,7 +72,7 @@ brew install owo-network/brew/kumone --cask
 
 ### iOS / iPadOS（侧载）
 
-每次发版都会附带**无签名**的 `Kumone-iOS-x.y.z.ipa`（iOS 17+）。Kumone 是非官方客户端，不会上架 App Store 或 TestFlight，请用侧载工具以自己的 Apple ID 签名安装 —— [AltStore](https://altstore.io)、[SideStore](https://sidestore.io)、[Sideloadly](https://sideloadly.io) 或 Xcode 均可。
+每次发版都会附带**无签名**的 `Kumone-iOS-x.y.z.ipa`（iOS 16+）。Kumone 是非官方客户端，不会上架 App Store 或 TestFlight，请用侧载工具以自己的 Apple ID 签名安装 —— [AltStore](https://altstore.io)、[SideStore](https://sidestore.io)、[Sideloadly](https://sideloadly.io) 或 Xcode 均可。iOS 26+ 的 Tab Bar 使用系统原生 Liquid Glass；iOS 16–25 则回退为仿制的玻璃栏。
 
 更新：iOS 应用无法自我替换。设置 → 关于 → **检查更新** 会提示是否有新版本并给出下载链接，下载新 IPA 后用同一工具重新安装即可，登录状态与设置会保留。AltStore / SideStore 也可通过 source 自动追踪发布。
 
@@ -104,6 +104,10 @@ Sources/Kumone/
 ```
 
 不依赖任何第三方 API 服务器：weapi（AES-CBC 双层 + RSA）与 eapi（AES-ECB + MD5 摘要）加密为原生 Swift 实现，请求直达 `music.163.com` / `interface.music.163.com`。
+
+## 相关项目
+
+想要 **tvOS** 版本？欢迎使用我朋友 Svend 维护的 [Sonimbus](https://github.com/gee1k/sonimbus) —— 一个 Apple TV 上的网易云音乐客户端。
 
 ## Credits
 

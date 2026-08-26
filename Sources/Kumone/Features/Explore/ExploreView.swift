@@ -1,8 +1,7 @@
 import SwiftUI
 
 @MainActor
-@Observable
-final class ExploreViewModel {
+final class ExploreViewModel: ObservableObject {
     /// Shared so category selection and loaded pages survive sidebar switches.
     static let shared = ExploreViewModel()
 
@@ -13,11 +12,11 @@ final class ExploreViewModel {
         "学习", "工作", "运动", "驾车", "夜晚",
     ]
 
-    var selectedCategory = "全部"
-    var playlists: [PlaylistSummary] = []
-    var toplists: [ToplistItem] = []
-    var isLoading = false
-    var hasMore = true
+    @Published var selectedCategory = "全部"
+    @Published var playlists: [PlaylistSummary] = []
+    @Published var toplists: [ToplistItem] = []
+    @Published var isLoading = false
+    @Published var hasMore = true
     private var offset = 0
     private var highQualityBefore = 0
     private var loadTask: Task<Void, Never>?
@@ -75,8 +74,8 @@ final class ExploreViewModel {
 }
 
 struct ExploreView: View {
-    @State private var model = ExploreViewModel.shared
-    @Environment(PlayerService.self) private var player
+    @StateObject private var model = ExploreViewModel.shared
+    @EnvironmentObject private var player: PlayerService
 
     var body: some View {
         ScrollView {
@@ -158,7 +157,8 @@ struct ExploreView: View {
                 let ids = detail.playlist.trackIds.map(\.id)
                 tracks = (try? await NeteaseAPI.songDetails(ids: Array(ids.prefix(500))))?.songs ?? []
             }
-            player.play(tracks: tracks, source: .playlist(id))
+            player.play(tracks: tracks, source: .playlist(id),
+                        context: .playlist(id: id, name: detail.playlist.name))
         }
     }
 }

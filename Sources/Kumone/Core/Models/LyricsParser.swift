@@ -105,6 +105,18 @@ enum LyricsParser {
         merge(response.tlyric?.lyric, into: \.translation)
         merge(response.romalrc?.lyric, into: \.romaji)
 
+        // Romaji is only meaningful for Japanese lyrics: fill the gaps Netease
+        // left, and drop stray annotations on everything else.
+        if RomajiTranscriber.isJapanese(lines.map(\.text)) {
+            for i in lines.indices where lines[i].romaji == nil {
+                lines[i].romaji = RomajiTranscriber.transcribe(lines[i].text)
+            }
+        } else {
+            for i in lines.indices {
+                lines[i].romaji = nil
+            }
+        }
+
         out.lines = lines
         return out
     }

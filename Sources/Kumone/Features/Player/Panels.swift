@@ -3,8 +3,9 @@ import SwiftUI
 // MARK: - Lyrics panel
 
 struct LyricsPanel: View {
-    @Environment(PlayerService.self) private var player
-    @Environment(SettingsManager.self) private var settings
+    @EnvironmentObject private var player: PlayerService
+    @ObservedObject private var clock = PlayerService.shared.clock
+    @EnvironmentObject private var settings: SettingsManager
 
     @State private var activeIndex: Int?
     @State private var isUserScrolling = false
@@ -68,8 +69,8 @@ struct LyricsPanel: View {
                     }
                     .padding(.horizontal, 20)
                 }
-                .onChange(of: player.progress) {
-                    let index = lyrics.activeIndex(at: player.progress + 0.2)
+                .onChange(of: clock.progress) { _ in
+                    let index = lyrics.activeIndex(at: clock.progress + 0.2)
                     guard index != activeIndex else { return }
                     activeIndex = index
                     guard !isUserScrolling, let index else { return }
@@ -77,7 +78,7 @@ struct LyricsPanel: View {
                         proxy.scrollTo(index, anchor: .center)
                     }
                 }
-                .onChange(of: player.currentTrack?.id) {
+                .onChange(of: player.currentTrack?.id) { _ in
                     activeIndex = nil
                     proxy.scrollTo(0, anchor: .top)
                 }
@@ -113,6 +114,11 @@ struct LyricsPanel: View {
             player.seek(to: line.time)
         } label: {
             VStack(alignment: .leading, spacing: 3) {
+                if settings.showLyricsRomaji, let romaji = line.romaji {
+                    Text(romaji)
+                        .font(.system(size: isActive ? 12 : 11))
+                        .foregroundStyle(isActive ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                }
                 Text(line.text.isEmpty ? "♪" : line.text)
                     .font(.system(size: isActive ? 16 : 14, weight: isActive ? .bold : .medium))
                     .foregroundStyle(isActive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
@@ -136,7 +142,7 @@ struct LyricsPanel: View {
 // MARK: - Queue panel
 
 struct QueuePanel: View {
-    @Environment(PlayerService.self) private var player
+    @EnvironmentObject private var player: PlayerService
 
     var body: some View {
         VStack(spacing: 0) {
@@ -210,7 +216,7 @@ private struct QueueRow: View {
     let track: Track
     let isCurrent: Bool
 
-    @Environment(PlayerService.self) private var player
+    @EnvironmentObject private var player: PlayerService
     @State private var isHovering = false
 
     var body: some View {

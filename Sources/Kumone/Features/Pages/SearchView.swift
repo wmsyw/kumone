@@ -1,8 +1,7 @@
 import SwiftUI
 
 @MainActor
-@Observable
-final class SearchViewModel {
+final class SearchViewModel: ObservableObject {
     enum Tab: String, CaseIterable, Identifiable {
         case all = "综合"
         case songs = "单曲"
@@ -14,13 +13,13 @@ final class SearchViewModel {
     }
 
     var query: String
-    var tab: Tab = .all
-    var songs: [Track] = []
-    var artists: [ArtistSummary] = []
-    var albums: [AlbumSummary] = []
-    var playlists: [PlaylistSummary] = []
-    var isLoading = false
-    var loadedTabs: Set<Tab> = []
+    @Published var tab: Tab = .all
+    @Published var songs: [Track] = []
+    @Published var artists: [ArtistSummary] = []
+    @Published var albums: [AlbumSummary] = []
+    @Published var playlists: [PlaylistSummary] = []
+    @Published var isLoading = false
+    @Published var loadedTabs: Set<Tab> = []
 
     init(query: String) {
         self.query = query
@@ -69,13 +68,13 @@ final class SearchViewModel {
 struct SearchView: View {
     let initialQuery: String
 
-    @State private var model: SearchViewModel
+    @StateObject private var model: SearchViewModel
     @State private var searchText: String = ""
-    @Environment(PlayerService.self) private var player
+    @EnvironmentObject private var player: PlayerService
 
     init(query: String) {
         self.initialQuery = query
-        _model = State(initialValue: SearchViewModel(query: query))
+        _model = StateObject(wrappedValue: SearchViewModel(query: query))
         _searchText = State(initialValue: query)
     }
 
@@ -83,7 +82,7 @@ struct SearchView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Picker("", selection: Bindable(model).tab) {
+                    Picker("", selection: $model.tab) {
                         ForEach(SearchViewModel.Tab.allCases) { tab in
                             Text(LocalizedStringKey(tab.rawValue)).tag(tab)
                         }
@@ -110,7 +109,7 @@ struct SearchView: View {
             model.setQuery(searchText)
             Task { await model.load(tab: model.tab) }
         }
-        .onChange(of: searchText) { _, newValue in
+        .onChange(of: searchText) { newValue in
             model.setQuery(newValue)
             Task {
                 try? await Task.sleep(nanoseconds: 400_000_000)

@@ -1,16 +1,15 @@
 import SwiftUI
 
 @MainActor
-@Observable
-final class PlaylistDetailViewModel {
+final class PlaylistDetailViewModel: ObservableObject {
     let playlistID: Int
-    var detail: PlaylistDetail?
-    var tracks: [Track] = []
-    var privileges: [Int: TrackPrivilege] = [:]
-    var isLoading = true
-    var isLoadingMore = false
-    var errorMessage: String?
-    var filter = ""
+    @Published var detail: PlaylistDetail?
+    @Published var tracks: [Track] = []
+    @Published var privileges: [Int: TrackPrivilege] = [:]
+    @Published var isLoading = true
+    @Published var isLoadingMore = false
+    @Published var errorMessage: String?
+    @Published var filter = ""
 
     init(playlistID: Int) {
         self.playlistID = playlistID
@@ -70,16 +69,16 @@ struct PlaylistDetailView: View {
     let playlistID: Int
     var isLikedList = false
 
-    @State private var model: PlaylistDetailViewModel
-    @Environment(PlayerService.self) private var player
-    @Environment(AccountStore.self) private var account
+    @StateObject private var model: PlaylistDetailViewModel
+    @EnvironmentObject private var player: PlayerService
+    @EnvironmentObject private var account: AccountStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showFullDescription = false
 
     init(playlistID: Int, isLikedList: Bool = false) {
         self.playlistID = playlistID
         self.isLikedList = isLikedList
-        _model = State(initialValue: PlaylistDetailViewModel(playlistID: playlistID))
+        _model = StateObject(wrappedValue: PlaylistDetailViewModel(playlistID: playlistID))
     }
 
     private var isOwnPlaylist: Bool {
@@ -112,6 +111,7 @@ struct PlaylistDetailView: View {
                         tracks: model.filteredTracks,
                         privileges: model.privileges,
                         source: .playlist(playlistID),
+                        context: model.detail.map { .playlist(id: playlistID, name: $0.name) },
                         removableFromPlaylistID: isOwnPlaylist ? playlistID : nil,
                         onRemoved: { model.remove($0) }
                     )
@@ -217,7 +217,8 @@ struct PlaylistDetailView: View {
             // Compact Action Bar
             HStack(spacing: 10) {
                 Button {
-                    player.play(tracks: playable, source: .playlist(playlistID))
+                    player.play(tracks: playable, source: .playlist(playlistID),
+                                context: model.detail.map { .playlist(id: playlistID, name: $0.name) })
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "play.fill")
@@ -326,7 +327,8 @@ struct PlaylistDetailView: View {
     private func actionRow(_ detail: PlaylistDetail) -> some View {
         HStack(spacing: 10) {
             Button {
-                player.play(tracks: playable, source: .playlist(playlistID))
+                player.play(tracks: playable, source: .playlist(playlistID),
+                            context: .playlist(id: playlistID, name: detail.name))
             } label: {
                 Label("播放全部", systemImage: "play.fill")
                     .font(.system(size: 13, weight: .semibold))
@@ -369,7 +371,7 @@ struct PlaylistDetailView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                TextField("搜索歌单内歌曲", text: Bindable(model).filter)
+                TextField("搜索歌单内歌曲", text: $model.filter)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .frame(width: 130)
@@ -398,7 +400,7 @@ struct PlaylistDetailView: View {
                     ToastCenter.shared.show(String(localized: "心动模式暂时不可用"))
                     return
                 }
-                player.play(tracks: tracks, source: .playlist(playlistID))
+                player.play(tracks: tracks, source: .playlist(playlistID), context: .heartbeat)
                 ToastCenter.shared.show(String(localized: "已开启心动模式"))
             } catch {
                 ToastCenter.shared.show(error.localizedDescription)

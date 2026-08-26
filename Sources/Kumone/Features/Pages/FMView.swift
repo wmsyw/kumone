@@ -2,8 +2,8 @@ import SwiftUI
 
 /// 私人漫游 — immersive personal FM page.
 struct FMView: View {
-    @Environment(PlayerService.self) private var player
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var player: PlayerService
+    @EnvironmentObject private var account: AccountStore
     @Environment(\.openLogin) private var openLogin
     @Environment(\.colorScheme) private var colorScheme
 
@@ -135,7 +135,7 @@ struct FMView: View {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(.white)
-                        .contentTransition(.symbolEffect(.replace))
+                        .contentTransition(.opacity)
                 }
             }
             .buttonStyle(.pressable)

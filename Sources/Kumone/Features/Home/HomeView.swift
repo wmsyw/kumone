@@ -1,8 +1,7 @@
 import SwiftUI
 
 @MainActor
-@Observable
-final class HomeViewModel {
+final class HomeViewModel: ObservableObject {
     /// Shared so the loaded page survives sidebar switches (no skeleton flash).
     static let shared = HomeViewModel()
 
@@ -27,13 +26,13 @@ final class HomeViewModel {
         let coverURL: String?
     }
 
-    var state: State = .idle
-    var recommendPlaylists: [PlaylistSummary] = []
-    var radarPlaylists: [RadarPlaylist] = []
-    var toplists: [ToplistItem] = []
-    var newAlbums: [AlbumSummary] = []
-    var topArtists: [ArtistSummary] = []
-    var dailyFirstCover: String?
+    @Published var state: State = .idle
+    @Published var recommendPlaylists: [PlaylistSummary] = []
+    @Published var radarPlaylists: [RadarPlaylist] = []
+    @Published var toplists: [ToplistItem] = []
+    @Published var newAlbums: [AlbumSummary] = []
+    @Published var topArtists: [ArtistSummary] = []
+    @Published var dailyFirstCover: String?
 
     func load(loggedIn: Bool) async {
         if case .loaded = state { return }
@@ -105,9 +104,9 @@ final class HomeViewModel {
 }
 
 struct HomeView: View {
-    @Environment(AccountStore.self) private var account
-    @Environment(PlayerService.self) private var player
-    @State private var model = HomeViewModel.shared
+    @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var player: PlayerService
+    @StateObject private var model = HomeViewModel.shared
 
     var body: some View {
         ScrollView {
@@ -266,7 +265,7 @@ struct HomeView: View {
             }
             .padding(.vertical, 6)
         }
-        .scrollClipDisabled() // hover scale must not be clipped (#11)
+        .compatScrollClipDisabled()
     }
 
     private func startHeartbeatMode() {
@@ -282,7 +281,8 @@ struct HomeView: View {
                     ToastCenter.shared.show(String(localized: "心动模式暂时不可用"))
                     return
                 }
-                player.play(tracks: tracks, source: .playlist(likedList.id))
+                player.play(tracks: tracks, source: .playlist(likedList.id),
+                            context: .heartbeat)
                 ToastCenter.shared.show(String(localized: "已开启心动模式"))
             } catch {
                 ToastCenter.shared.show(error.localizedDescription)
@@ -319,7 +319,8 @@ struct HomeView: View {
             ) {
                 Task {
                     if let detail = try? await NeteaseAPI.album(id: album.id) {
-                        player.play(tracks: detail.songs, source: .album(album.id))
+                        player.play(tracks: detail.songs, source: .album(album.id),
+                                    context: .album(id: album.id, name: album.name))
                     }
                 }
             }
@@ -377,7 +378,8 @@ struct HomeView: View {
                 let ids = detail.playlist.trackIds.map(\.id)
                 tracks = (try? await NeteaseAPI.songDetails(ids: Array(ids.prefix(500))))?.songs ?? []
             }
-            player.play(tracks: tracks, source: .playlist(id))
+            player.play(tracks: tracks, source: .playlist(id),
+                        context: .playlist(id: id, name: detail.playlist.name))
         }
     }
 }

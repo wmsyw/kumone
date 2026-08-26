@@ -4,7 +4,7 @@ struct SidebarView: View {
     @Binding var selection: SidebarItem
     @Binding var showLogin: Bool
 
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var account: AccountStore
     @State private var showNewPlaylist = false
     @State private var newPlaylistName = ""
     @State private var avatarImage: PlatformImage?
@@ -181,7 +181,7 @@ private struct AccountChip: View {
     let profile: UserProfile
     let avatarImage: PlatformImage?
 
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var account: AccountStore
     @State private var showPopover = false
     @State private var isHovering = false
 

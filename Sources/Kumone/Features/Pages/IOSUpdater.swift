@@ -11,8 +11,7 @@ import UIKit
 /// plain AltStore/SideStore sideload there is no such install primitive, so
 /// the updater falls back to opening the release page for a manual reinstall.
 @MainActor
-@Observable
-final class IOSUpdater: NSObject {
+final class IOSUpdater: NSObject, ObservableObject {
     static let shared = IOSUpdater()
 
     enum Phase {
@@ -26,27 +25,11 @@ final class IOSUpdater: NSObject {
         case failed(String)
     }
 
-    var phase: Phase = .idle
-    var showSheet = false
+    @Published var phase: Phase = .idle
+    @Published var showSheet = false
 
     private var downloadTask: URLSessionDownloadTask?
     private var progressContinuation: CheckedContinuation<URL, Error>?
-
-    /// Whether TrollStore is present and claims the install scheme.
-    /// `canOpenURL("apple-magnifier://")` alone is unreliable — the system
-    /// Magnifier claims that scheme too — so mirror Dopamine and confirm
-    /// the TrollStore bundle claims it (via the LSApplicationProxy SPI).
-    static var isTrollStoreAvailable: Bool {
-        guard let cls = NSClassFromString("LSApplicationProxy") as? NSObject.Type,
-              cls.responds(to: NSSelectorFromString("applicationProxyForIdentifier:"))
-        else { return false }
-        let proxy = cls.perform(NSSelectorFromString("applicationProxyForIdentifier:"),
-                                with: "com.opa334.TrollStore")?.takeUnretainedValue()
-        guard let proxy = proxy as? NSObject,
-              let schemes = proxy.value(forKey: "claimedURLSchemes") as? [String]
-        else { return false }
-        return schemes.contains("apple-magnifier")
-    }
 
     func check(interactive: Bool) {
         phase = .checking
@@ -67,24 +50,45 @@ final class IOSUpdater: NSObject {
         }
     }
 
+    /// TrollStore path (Dopamine-style): hand the remote IPA URL straight to
+    /// TrollStore via its `apple-magnifier://install` scheme. We do **not**
+    /// detect TrollStore first — detection via `canOpenURL` /
+    /// `LSApplicationProxy` is unreliable and produced false negatives (present
+    /// but reported "not detected"). `UIApplication.open` does not require the
+    /// scheme to be whitelisted, so we always fire it: if TrollStore is
+    /// installed it fetches and installs the IPA with its own privileges and
+    /// relaunches; if it is not, `open` fails and we point the user at the
+    /// manual download.
+    func installViaTrollStore(_ release: ReleaseChecker.Release) {
+        guard let ipaURL = release.ipaURL else {
+            openReleasePage(release)
+            return
+        }
+        // Percent-encode the whole URL as the `url` query value so TrollStore's
+        // parser reconstructs it exactly (GitHub asset URLs are otherwise safe,
+        // but this is robust against any reserved characters).
+        let encoded = ipaURL.absoluteString
+            .addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ipaURL.absoluteString
+        guard let url = URL(string: "apple-magnifier://install?url=\(encoded)") else {
+            phase = .failed(String(localized: "无法构造安装链接"))
+            return
+        }
+        UIApplication.shared.open(url) { [weak self] success in
+            Task { @MainActor in
+                self?.phase = success
+                    ? .handedOff
+                    : .failed(String(localized: "无法唤起 TrollStore，请改用「下载 IPA」手动侧载"))
+            }
+        }
+    }
+
+    /// Non-TrollStore path: download the IPA ourselves (with a progress ring),
+    /// then present a share/save sheet to pass it to a signer (AltStore, etc.).
     func download(_ release: ReleaseChecker.Release) {
         guard let ipaURL = release.ipaURL else {
             openReleasePage(release)
             return
         }
-        // TrollStore path (Dopamine's Path B): don't pre-download — hand the
-        // remote asset URL to TrollStore, which fetches and installs it with
-        // its own privileges, then relaunches.
-        if Self.isTrollStoreAvailable {
-            let scheme = "apple-magnifier://install?url=\(ipaURL.absoluteString)"
-            if let url = URL(string: scheme) {
-                UIApplication.shared.open(url)
-                phase = .handedOff
-                return
-            }
-        }
-        // No TrollStore: still show the progress ring while downloading, then
-        // present a share/save sheet so the user can pass the IPA to a signer.
         phase = .downloading(0)
         Task {
             do {
@@ -160,7 +164,7 @@ extension IOSUpdater: URLSessionDownloadDelegate {
 // MARK: - UI
 
 struct IOSUpdaterSheet: View {
-    @Bindable var updater = IOSUpdater.shared
+    @StateObject private var updater = IOSUpdater.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -184,16 +188,14 @@ struct IOSUpdaterSheet: View {
                     Text("当前版本 \(ReleaseChecker.currentVersion)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if IOSUpdater.isTrollStoreAvailable {
-                    Text("将下载并通过 TrollStore 自动安装")
-                        .font(.caption).foregroundStyle(.secondary)
-                    primaryButton("下载并安装") { updater.download(release) }
-                } else {
-                    Text("未检测到 TrollStore，将打开发布页手动侧载")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    primaryButton("前往下载") { updater.openReleasePage(release); dismiss() }
-                }
+                Text("已装 TrollStore（巨魔）将自动安装；否则用「下载 IPA」手动侧载")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                primaryButton("自动安装（TrollStore）") { updater.installViaTrollStore(release) }
+                Button("下载 IPA 手动侧载") { updater.download(release) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.accent)
                 laterButton
 
             case .downloading(let progress):
@@ -228,7 +230,7 @@ struct IOSUpdaterSheet: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity)
-        .presentationDetents([.height(320)])
+        .presentationDetents([.height(360)])
     }
 
     private func primaryButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {

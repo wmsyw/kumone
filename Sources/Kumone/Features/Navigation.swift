@@ -12,7 +12,7 @@ extension EnvironmentValues {
 }
 
 struct PlayerChromeModifier: ViewModifier {
-    @Environment(PlayerService.self) private var player
+    @EnvironmentObject private var player: PlayerService
     let detailWidth: CGFloat
 
     func body(content: Content) -> some View {

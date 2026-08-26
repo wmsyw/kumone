@@ -237,14 +237,14 @@ struct MarqueeText: View {
             .offset(x: offset)
             .frame(maxHeight: .infinity, alignment: .leading)
             .onAppear { containerWidth = geo.size.width }
-            .onChange(of: geo.size.width) { _, newValue in containerWidth = newValue }
+            .onChange(of: geo.size.width) { newValue in containerWidth = newValue }
         }
         .clipped()
         .mask(edgeFadeMask)
-        .onChange(of: text) {
+        .onChange(of: text) { _ in
             restart()
         }
-        .onChange(of: needsMarquee) {
+        .onChange(of: needsMarquee) { _ in
             restart()
         }
         .background(
@@ -255,7 +255,7 @@ struct MarqueeText: View {
                 .background(
                     GeometryReader { geo in
                         Color.clear.onAppear { textWidth = geo.size.width }
-                            .onChange(of: geo.size.width) { _, newValue in textWidth = newValue }
+                            .onChange(of: geo.size.width) { newValue in textWidth = newValue }
                     }
                 )
         )

@@ -6,6 +6,95 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.3.6 - 2026-08-25
+
+### Added / 新增
+
+- iOS: immersive iPhone Now Playing — compact track header, synced lyrics, artwork and queue, with pull-to-dismiss and a spatial transition from the mini player (zoom on iOS 18+, matched-geometry below). A new Settings → Appearance toggle switches between the immersive and classic layouts (immersive by default). macOS is unchanged. Thanks @miloquinn (#27).
+- iOS：iPhone 沉浸式播放页——紧凑信息栏、同步歌词、封面与播放队列，支持下拉关闭以及从迷你播放器进入的空间转场（iOS 18+ 用 zoom，更低版本用 matched-geometry）。设置 → 外观新增开关可在沉浸式与经典布局间切换（默认沉浸式）。macOS 不变。感谢 @miloquinn（#27）。
+- iOS 26: a Liquid Glass mini player rendered as the system `tabViewBottomAccessory` — it collapses into an inline layout together with the tab bar when the list scrolls down; iOS 16–25 keep the existing custom glass bar. Thanks @miloquinn (#27).
+- iOS 26：迷你播放器改用系统 `tabViewBottomAccessory` 的液态玻璃样式——列表下滑时随 Tab Bar 收纳为行内样式；iOS 16–25 继续使用现有的自定义玻璃条。感谢 @miloquinn（#27）。
+
+### Improved / 改进
+
+- iOS: refined the compact track list — larger artwork and row height, clearer title/artist/duration hierarchy, track numbers hidden in compact layouts, and playback state shown over the artwork; Dynamic Type preserved. Thanks @miloquinn (#27).
+- iOS：精修紧凑歌曲列表——更大的封面与行高、更清晰的标题/歌手/时长层级、紧凑布局隐藏序号、封面上显示播放状态；保留动态字体适配。感谢 @miloquinn（#27）。
+
+## 0.3.5 - 2026-08-25
+
+### Added / 新增
+
+- Dock menu (right-click the Dock icon): play/pause, next, previous, shuffle, a repeat submenu, and the last six places playback started from — playlists, albums, artists, daily recommendations, cloud disk, the play-record list, heartbeat mode and personal FM. Picking one reloads it and plays; heartbeat mode and personal FM are regenerated rather than resumed, since neither is a fixed list. Thanks @XerWandeRer (#24).
+- Dock 菜单（右键 Dock 图标）：播放/暂停、下一首、上一首、随机播放、循环模式子菜单，以及最近播放过的 6 个来源——歌单、专辑、歌手、每日推荐、音乐云盘、最近播放、心动模式、私人漫游。点击即重新载入并播放；心动模式与私人漫游会重新生成而非恢复原队列，因为它们本就不是固定歌单。感谢 @XerWandeRer（#24）。
+- Romaji above Japanese lyrics (romaji / original / translation) on the full-screen now-playing lyrics and the side lyrics panel. Netease's hand-checked `romalrc` is used when present, otherwise an offline system transcription fills the gaps; Japanese-only, off by default (Settings → Appearance). Thanks @XerWandeRer (#25).
+- 日文歌词上方显示罗马音（罗马音 / 原文 / 翻译），覆盖全屏播放页大歌词与右侧歌词面板。有网易云人工校对的 `romalrc` 时优先使用，缺失时用系统离线转写兜底；仅日文歌触发，默认关闭（设置 → 外观）。感谢 @XerWandeRer（#25）。
+
+### Fixed / 修复
+
+- macOS: the window no longer grows by the sidebar's width every time the immersive now-playing page is dismissed. The window minimum was a SwiftUI content constraint, so while the now-playing page collapsed the sidebar the whole 1020pt minimum landed on the detail column; restoring the sidebar then forced the window to 1248pt. The minimum is now reduced by the sidebar width while it is collapsed. Thanks @XerWandeRer (#23, the real fix for #19).
+- macOS：退出沉浸式播放页时窗口不再每次都变宽一个侧边栏的宽度。窗口最小宽度原本是 SwiftUI 内容约束，播放页折叠侧边栏时 1020pt 下限全落在详情列上，恢复侧边栏后被撑到 1248pt；现在折叠期间会减去侧边栏宽度。感谢 @XerWandeRer（#23，真正修复 #19）。
+- macOS: the immersive now-playing page no longer leaves a toolbar's worth of empty space at the top — the toolbar is hidden there but SwiftUI kept reserving its safe area, pushing the close button ~68pt down. The button insets are also even now (20pt both edges). Thanks @XerWandeRer (#24).
+- macOS：沉浸式播放页顶部不再多出一个工具栏高度的空白——该页隐藏了工具栏，但 SwiftUI 仍为其保留安全区域，把收起按钮推到距顶部约 68pt；按钮四边间距也统一为 20pt。感谢 @XerWandeRer（#24）。
+
+## 0.3.4 - 2026-08-25
+
+### Fixed / 修复
+
+- Now Playing screen was misaligned on iPhone whenever a track was playing — content and the top-right lyrics button spilled off the right edge. The transport-control row was a fixed-width `HStack`; with the like button present it summed to ~430pt, wider than any iPhone, so it overflowed and stretched the whole layout (and its corner overlays) past the screen edge. Controls now lay out in equal-width slots that fit any device, and the page is pinned to the screen width. (#22)
+- 播放界面在有歌曲播放时于 iPhone 上错位——内容和右上角歌词按钮溢出到屏幕右侧之外。底部控制条原本是固定宽度的 `HStack`，加上「喜欢」按钮后总宽约 430pt、比任何 iPhone 都宽，于是溢出并把整个布局（含四角浮层）撑到屏幕之外。现在控制按钮按等宽均分排布，可适配任意机型，并将页面钉定到屏幕宽度。（#22）
+
+## 0.3.3 - 2026-08-25
+
+### Improved / 改进
+
+- iOS 16–25 glass tab bar rebuilt to match Telegram's Liquid Glass bar 1:1 (studied from telegram-ios `TabBarComponent` / `LiquidLensView`): the selection is a bar-height capsule using Telegram's own faint tint — a subtle darkening in light, a subtle lightening in dark — instead of a bright chip, and unselected items use an 80%-black filled icon + 10pt label. The pill is now **interactive**: drag it and it tracks your finger, switching tabs live and settling with a spring on release; a tap slides it there.
+- iOS 16–25 玻璃 Tab Bar 按 Telegram 的 Liquid Glass 栏 1:1 重制（参照 telegram-ios 的 `TabBarComponent` / `LiquidLensView`）：选中块改为与栏等高的胶囊、采用 Telegram 同款的淡淡着色（浅色下轻微压暗、深色下轻微提亮），不再是过亮的方块；未选中项用 80% 黑的填充图标 + 10pt 文字。选中滑块现在**可交互**：拖动它会跟随手指在标签间滑动、实时切换页面，松手后以弹簧动画归位；点按则滑动过去。
+
+## 0.3.2 - 2026-08-25
+
+### Fixed / 修复
+
+- iOS in-app update no longer tries to "detect" TrollStore. The previous detection (via `canOpenURL` / `LSApplicationProxy`) gave false negatives — reporting "TrollStore not detected" on devices that clearly had it and had URL schemes enabled. Following Dopamine, the update sheet now always offers a one-tap **自动安装（TrollStore）** that fires `apple-magnifier://install?url=…` directly (`open` needs no scheme whitelisting), with a manual **下载 IPA** fallback for other sideloaders.
+- iOS 应用内更新不再「检测」TrollStore。之前用 `canOpenURL` / `LSApplicationProxy` 检测会误判——明明装了巨魔、也开了 URL Scheme，却提示「未检测到 TrollStore」。参照 Dopamine，更新弹窗现在始终提供一键 **自动安装（TrollStore）**，直接唤起 `apple-magnifier://install?url=…`（`open` 无需 scheme 白名单），并保留 **下载 IPA** 手动侧载入口。
+
+### Improved / 改进
+
+- iOS 16–25 glass tab bar now matches the iOS 26 native Liquid Glass bar 1:1: a near-full-width frosted capsule, filled primary-colour icons (accent on the selected tab), and a subtle sliding lighter-glass pill — replacing the earlier bright, oversized chip and washed-out grey icons.
+- iOS 16–25 玻璃 Tab Bar 现在与 iOS 26 原生 Liquid Glass 栏 1:1 对齐：接近满宽的磨砂胶囊、填充的主色图标（选中项为强调色）、低调滑动的浅玻璃选中块——取代之前过亮过大的方块与灰扁的图标。
+
+## 0.3.1 - 2026-08-25
+
+### Fixed / 修复
+
+- iOS 16–25: removed the duplicate system tab bar that was showing behind the glass tab bar. The pre-26 layout no longer hosts a `TabView` (each tab is a persistent `NavigationStack` shown/hidden in place), so there is now exactly one tab bar.
+- iOS 16–25：修复玻璃 Tab Bar 背后还叠着一个系统原生 Tab Bar 的问题。26 以下的布局不再使用 `TabView`（每个标签为常驻的 `NavigationStack`，就地显隐），现在只有一个 Tab Bar。
+
+### Improved / 改进
+
+- iOS 16–25 glass tab bar: the selected tab now sits on a brighter, dimensional glass chip — a Telegram-style continuous-rounded squircle with a specular highlight, hairline rim, and soft shadow — that clearly lifts off the bar, instead of the previous flat wash.
+- iOS 16–25 玻璃 Tab Bar：选中项改为更明亮、有立体感的玻璃方块——Telegram 风格的连续圆角方块，带高光、细描边与柔和投影——明显浮于栏面，不再是之前扁平的一层。
+
+## 0.2.8 - 2026-08-25
+
+### Added / 新增
+
+- AirPlay: the now-playing page (and the macOS player bar) gain a system route picker for sending audio to AirPlay / Bluetooth devices; playback is audio-only, so it routes sound instead of mirroring the screen (#20)
+- AirPlay：播放页（及 macOS 播放条）新增系统输出设备选择器，可将音频投送到 AirPlay / 蓝牙设备；由于是纯音频播放，只路由声音而非镜像屏幕（#20）
+
+## 0.3.0 - 2026-08-25
+
+### Added / 新增
+
+- iOS 16 support: the minimum iOS version is lowered from 17 to 16 (iPhone 8 / X and later). The Observation-based state layer was rewritten to classic `ObservableObject`, with the high-frequency playback position split into its own `PlaybackClock` so only the scrubbers and lyrics re-render per tick — everything else is unaffected. macOS behavior is unchanged.
+- Liquid Glass tab bar on iOS: iOS 26+ uses the native glass tab bar; iOS 16–25 gets a Telegram-style simulated glass bar (blurred material capsule with an edge highlight, hairline rim, and soft shadow).
+- iOS 16 支持：最低 iOS 版本从 17 降到 16（iPhone 8 / X 及之后机型）。基于 Observation 的状态层重写为经典 `ObservableObject`，并把高频播放进度拆到独立的 `PlaybackClock`，每秒跳动只重绘进度条与歌词，其余视图不受影响；macOS 行为不变。
+- iOS 玻璃 Tab Bar：iOS 26+ 使用系统原生玻璃 Tab Bar；iOS 16–25 使用 Telegram 风格的仿制玻璃（材质模糊胶囊 + 边缘高光 + 细描边 + 柔和投影）。
+
+### Improved / 改进
+
+- Redesigned the phone-code login form (rounded card-style input rows) and added a notice that SMS login may be blocked by NetEase's risk control — QR sign-in is recommended.
+- 重新设计手机验证码登录表单（圆角卡片式输入行），并提示短信登录可能被网易云风控拦截、推荐使用扫码登录。
+
 ## 0.2.7 - 2026-08-25
 
 ### Added / 新增

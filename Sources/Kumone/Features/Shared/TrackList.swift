@@ -23,14 +23,26 @@ struct TrackRow: View {
     var onRemoved: (() -> Void)?
     let onPlay: () -> Void
 
-    @Environment(PlayerService.self) private var player
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var player: PlayerService
+    @EnvironmentObject private var account: AccountStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .body) private var compactArtworkSize: CGFloat = 48
+    @ScaledMetric(relativeTo: .body) private var compactRowHeight: CGFloat = 64
+    @ScaledMetric(relativeTo: .body) private var compactAlbumRowHeight: CGFloat = 50
     @State private var isHovering = false
     @State private var showAddToPlaylist = false
 
     private var isCurrent: Bool { player.currentTrack?.id == track.id }
     private var isPlayable: Bool { playability == .playable }
+    private var showsArtwork: Bool { style != .albumTrack }
+
+    private var hidesLeadingIndex: Bool {
+        #if os(iOS)
+        return isCompact && showsArtwork
+        #else
+        return false
+        #endif
+    }
 
     private var isCompact: Bool {
         #if os(iOS)
@@ -41,19 +53,19 @@ struct TrackRow: View {
     }
 
     var body: some View {
-        HStack(spacing: isCompact ? 10 : 12) {
-            leadingIndicator
+        HStack(spacing: 12) {
+            if !hidesLeadingIndex {
+                leadingIndicator
+            }
 
-            if style != .albumTrack {
-                CachedAsyncImage(url: track.album.picUrl?.resizedImageURL(96), animated: false)
-                    .frame(width: isCompact ? 38 : 42, height: isCompact ? 38 : 42)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+            if showsArtwork {
+                artwork
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(track.name)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(isCompact ? .callout.weight(.medium) : .system(size: 13, weight: .medium))
                         .foregroundStyle(isCurrent ? Theme.accent : .primary)
                         .lineLimit(1)
                     if let subtitle = track.subtitle, !isCompact {
@@ -67,7 +79,7 @@ struct TrackRow: View {
                     }
                 }
                 Text(track.artistNames)
-                    .font(.system(size: 11.5))
+                    .font(isCompact ? .footnote : .system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -101,11 +113,11 @@ struct TrackRow: View {
 
             likeAndDuration
         }
-        .padding(.horizontal, isCompact ? 6 : 10)
-        .padding(.vertical, isCompact ? 4 : 5)
+        .padding(.horizontal, 10)
+        .padding(.vertical, isCompact ? 6 : 5)
         // Fixed row height keeps lazy-stack height estimation exact,
         // preventing scroll-offset jumps in long lists (#3).
-        .frame(height: style == .albumTrack ? (isCompact ? 44 : 46) : (isCompact ? 48 : 52))
+        .frame(height: rowHeight)
         .opacity(isPlayable ? 1 : 0.45)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous)
@@ -128,6 +140,38 @@ struct TrackRow: View {
         .sheet(isPresented: $showAddToPlaylist) {
             AddToPlaylistSheet(track: track)
         }
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if isCompact {
+            CachedAsyncImage(url: track.album.picUrl?.resizedImageURL(160), animated: false)
+                .frame(width: compactArtworkSize, height: compactArtworkSize)
+                .overlay(alignment: .bottomTrailing) {
+                    if hidesLeadingIndex, isCurrent {
+                        PlayingIndicator(animating: player.isPlaying)
+                            .padding(5)
+                            .background(
+                                .ultraThinMaterial,
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            )
+                            .padding(4)
+                    }
+                }
+                .compositingGroup()
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+        } else {
+            CachedAsyncImage(url: track.album.picUrl?.resizedImageURL(96), animated: false)
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+        }
+    }
+
+    private var rowHeight: CGFloat {
+        if style == .albumTrack {
+            return isCompact ? compactAlbumRowHeight : 46
+        }
+        return isCompact ? compactRowHeight : 52
     }
 
     @ViewBuilder
@@ -246,11 +290,13 @@ struct TrackListView: View {
     var style: TrackRowStyle = .full
     var privileges: [Int: TrackPrivilege] = [:]
     var source: PlaySource = .none
+    /// The place this list belongs to, for the Dock menu's recents.
+    var context: PlayContext?
     var removableFromPlaylistID: Int?
     var onRemoved: ((Track) -> Void)?
 
-    @Environment(PlayerService.self) private var player
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var player: PlayerService
+    @EnvironmentObject private var account: AccountStore
 
     var body: some View {
         LazyVStack(spacing: 1) {
@@ -263,7 +309,8 @@ struct TrackListView: View {
                     removableFromPlaylistID: removableFromPlaylistID,
                     onRemoved: { onRemoved?(track) }
                 ) {
-                    player.play(tracks: playableTracks, source: source, startAt: track)
+                    player.play(tracks: playableTracks, source: source, startAt: track,
+                                context: context)
                 }
             }
         }
@@ -289,7 +336,7 @@ struct TrackListView: View {
 struct AddToPlaylistSheet: View {
     let track: Track
 
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var account: AccountStore
     @Environment(\.dismiss) private var dismiss
     @State private var newName = ""
     @State private var creating = false

@@ -86,6 +86,8 @@
 
 /* Track list & context menu */
 "下一首播放" = "Play Next";
+"加入歌单…" = "Add to Playlist…";
+"更多操作" = "More Actions";
 "从「我喜欢」中移除" = "Remove from Liked Songs";
 "添加到「我喜欢」" = "Add to Liked Songs";
 "收藏到歌单…" = "Add to Playlist…";
@@ -278,3 +280,9 @@
 "完成" = "Done";
 "检测到 TrollStore：可在应用内下载并自动安装新版本" = "TrollStore detected: new versions download and install in-app";
 "未检测到 TrollStore：检查更新会打开发布页，需用侧载工具重新安装（登录状态与设置保留）" = "No TrollStore: Check for Updates opens the release page; reinstall with your sideloading tool (sign-in and settings are kept)";
+"可能被网易云风控拦截而不可用，推荐使用扫码登录" = "May be blocked by NetEase risk control and unavailable — QR sign-in is recommended";
+
+/* Dock menu */
+"不循环" = "Off";
+"列表循环" = "Repeat All";
+"单曲循环" = "Repeat One";

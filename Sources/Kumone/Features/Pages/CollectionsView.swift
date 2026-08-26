@@ -12,7 +12,7 @@ struct CollectionsView: View {
     @State private var tab: Tab = .albums
     @State private var isLoading = true
 
-    @Environment(AccountStore.self) private var account
+    @EnvironmentObject private var account: AccountStore
 
     var body: some View {
         ScrollView {

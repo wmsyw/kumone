@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct MainWindow: View {
-    @Environment(PlayerService.self) private var player
-    @Environment(AccountStore.self) private var account
-    @Environment(SettingsManager.self) private var settings
-    @Environment(ToastCenter.self) private var toasts
+    @EnvironmentObject private var player: PlayerService
+    @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var toasts: ToastCenter
 
     @State private var selection: SidebarItem = .home
     @State private var path = NavigationPath()
@@ -53,13 +53,13 @@ struct MainWindow: View {
             DesktopLyricsController.shared.sync(with: settings.showDesktopLyrics)
             await account.bootstrap()
         }
-        .onChange(of: settings.showDesktopLyrics) {
+        .onChange(of: settings.showDesktopLyrics) { _ in
             DesktopLyricsController.shared.sync(with: settings.showDesktopLyrics)
         }
         // Collapse the sidebar while the immersive page is open: the split
         // view's divider keeps its resize-cursor rect active even underneath
         // an overlay, leaking the drag cursor onto the now-playing page (#6).
-        .onChange(of: player.showNowPlaying) {
+        .onChange(of: player.showNowPlaying) { _ in
             if player.showNowPlaying {
                 visibilityBeforeNowPlaying = columnVisibility
                 columnVisibility = .detailOnly
@@ -94,7 +94,7 @@ struct MainWindow: View {
                 .playerContentInset()
                 .appDestinations()
         }
-        .onChange(of: selection) {
+        .onChange(of: selection) { _ in
             path = NavigationPath()
         }
     }
