@@ -105,21 +105,22 @@ public struct IOSMainWindow: View {
             appContent
 
             if player.showNowPlaying {
+                // Present full-screen with a bottom slide-up. A previous version
+                // used `matchedGeometryEffect(.frame, isSource: false)` here to
+                // zoom out of the mini player, but that copies the *source*
+                // (mini-bar) frame onto this view — shrinking the whole
+                // now-playing page to bar size, so on iOS 16/17 nothing
+                // full-screen appeared (#28). The slide-up matches the
+                // pull-down-to-dismiss gesture; iOS 18+ still gets the zoom.
                 nowPlayingPresentation(
                     usesSystemInteractiveDismissal: false,
                     dismissAnimation: NowPlayingPresentationMetrics.presentationAnimation
                 )
-                .matchedGeometryEffect(
-                    id: NowPlayingTransitionID.surface,
-                    in: nowPlayingTransition,
-                    properties: .frame,
-                    anchor: .bottom,
-                    isSource: false
-                )
-                .transition(.identity)
+                .transition(.move(edge: .bottom))
                 .zIndex(1)
             }
         }
+        .animation(NowPlayingPresentationMetrics.presentationAnimation, value: player.showNowPlaying)
     }
 
     @ViewBuilder
@@ -310,13 +311,9 @@ private extension View {
                 in: namespace
             )
         } else {
-            matchedGeometryEffect(
-                id: NowPlayingTransitionID.surface,
-                in: namespace,
-                properties: .frame,
-                anchor: .bottom,
-                isSource: true
-            )
+            // Pre-18 presents full-screen with a slide transition (see
+            // legacyPresentationRoot); no matched-geometry pairing needed.
+            self
         }
     }
 }

@@ -6,6 +6,13 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.3.7 - 2026-08-25
+
+### Fixed / 修复
+
+- iOS 16/17: tapping the mini player did nothing — the full-screen Now Playing page never appeared. The pre-iOS-18 presentation matched the page's geometry to the mini player bar (`matchedGeometryEffect(.frame, isSource: false)`), which shrank the whole page to bar size. It now presents full-screen with a bottom slide-up (matching the pull-down-to-dismiss); iOS 18+ keeps its zoom transition. (#28, regression from #27)
+- iOS 16/17：点击迷你播放条没有任何反应——全屏播放页始终弹不出来。iOS 18 以下的呈现用 `matchedGeometryEffect(.frame, isSource: false)` 把播放页的尺寸匹配到了迷你播放条，导致整页被压缩成播放条大小。现在改为全屏呈现 + 底部上滑动画（与下拉关闭方向一致）；iOS 18+ 仍保留 zoom 转场。（#28，#27 引入的回归）
+
 ## 0.3.6 - 2026-08-25
 
 ### Added / 新增
