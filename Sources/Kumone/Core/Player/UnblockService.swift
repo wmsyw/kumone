@@ -20,10 +20,13 @@ enum UnblockService {
     }
 
     static func resolve(_ track: Track) async -> Resolved? {
+        // Kugou before Kuwo: Kuwo's convert_url increasingly serves a
+        // promo clip instead of the real audio, so leave it as the final
+        // fallback while still probing every candidate before acceptance (#44).
         let providers: [(name: String, source: String, candidates: () async -> [URL])] = [
             ("pyncmd", "pyncmd", { await pyncmd(track) }),
-            ("kuwo", String(localized: "酷我音乐"), { await kuwo(track) }),
             ("kugou", String(localized: "酷狗音乐"), { await kugou(track) }),
+            ("kuwo", String(localized: "酷我音乐"), { await kuwo(track) }),
         ]
         for (provider, source, fetchCandidates) in providers {
             let candidates = await fetchCandidates()
