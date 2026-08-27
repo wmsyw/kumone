@@ -794,7 +794,7 @@ struct LyricMainText: View {
     /// One concatenated `Text` (so it wraps) with per-character opacity: sung
     /// characters are bright, the current one fades in, unsung stay dim.
     private func karaoke(_ words: [LyricWord], at time: TimeInterval) -> Text {
-        let unsung = max(inactiveOpacity, 0.5)
+        let unsung = 0.28
         var out = Text(verbatim: "")
         for word in words {
             let chars = Array(word.text)

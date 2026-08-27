@@ -6,6 +6,13 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.3.12 - 2026-08-27
+
+### Improved / 改进
+
+- **iOS + macOS**: stronger contrast for karaoke (逐字) lyrics — unsung characters are dimmer, so the word-by-word highlight is more obvious. Only songs that have NetEase verbatim (`yrc`) lyrics show it; others keep line-level highlighting.
+- **iOS + macOS**：逐字歌词（卡拉OK）对比度加强——未唱的字更暗，逐字高亮更明显。仅对有网易云逐字歌词（`yrc`）的歌曲生效，其余保持整行高亮。
+
 ## 0.3.11 - 2026-08-27
 
 ### Added / 新增
