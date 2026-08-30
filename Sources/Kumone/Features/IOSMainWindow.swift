@@ -172,22 +172,21 @@ public struct IOSMainWindow: View {
     /// translucent accessory platter above the tab bar when idle (#35), so we
     /// apply it conditionally.
     @available(iOS 26.0, *)
-    @ViewBuilder
     private var iOS26TabInterface: some View {
-        let base = iOS26TabView.tabBarMinimizeBehavior(.onScrollDown)
-        if player.hasCurrentTrack {
-            base
-                .tabViewBottomAccessory {
-                    IOSMiniPlayerAccessory(transitionNamespace: nowPlayingTransition)
-                        // Pin the scheme so the search-active tab environment
-                        // doesn't flip the bar's text to white (#31).
-                        .environment(\.colorScheme, resolvedColorScheme)
-                }
-                .animation(AppAnimation.standard, value: player.hasCurrentTrack)
-        } else {
-            base
-                .animation(AppAnimation.standard, value: player.hasCurrentTrack)
-        }
+        iOS26TabView
+            .tabBarMinimizeBehavior(.onScrollDown)
+            // Apply the accessory through a ViewModifier so the TabView keeps a
+            // single identity across the hasCurrentTrack toggle. An if/else here
+            // churns the TabView identity, which detaches the accessory's
+            // matchedTransitionSource and makes the now-playing zoom anchor at
+            // the screen centre (#57); not applying it when idle keeps the empty
+            // accessory platter gone (#35).
+            .modifier(MiniPlayerAccessoryModifier(
+                isActive: player.hasCurrentTrack,
+                transitionNamespace: nowPlayingTransition,
+                colorScheme: resolvedColorScheme
+            ))
+            .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
 
     @available(iOS 26.0, *)
@@ -305,6 +304,27 @@ private enum NowPlayingTransitionID {
 }
 
 // MARK: - Mini player bar for iOS
+
+@available(iOS 26.0, *)
+private struct MiniPlayerAccessoryModifier: ViewModifier {
+    let isActive: Bool
+    let transitionNamespace: Namespace.ID
+    let colorScheme: ColorScheme
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isActive {
+            content.tabViewBottomAccessory {
+                IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
+                    // Pin the scheme so the search-active tab environment
+                    // doesn't flip the bar's text to white (#31).
+                    .environment(\.colorScheme, colorScheme)
+            }
+        } else {
+            content
+        }
+    }
+}
 
 @available(iOS 26.0, *)
 private struct IOSMiniPlayerAccessory: View {
