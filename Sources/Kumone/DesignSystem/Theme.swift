@@ -22,6 +22,8 @@ enum Theme {
     enum Layout {
         static let contentInset: CGFloat = 24
         static let cardSize: CGFloat = 160
+        /// Fixed space for two 13pt cover-card title lines.
+        static let coverCardTitleHeight: CGFloat = 32
         /// Row height for a shelf of cover cards: artwork, then up to two lines
         /// of title and one of subtitle.
         static let coverShelfHeight: CGFloat = 226
