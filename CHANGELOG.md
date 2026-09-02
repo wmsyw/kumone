@@ -6,6 +6,35 @@
 section the English bullets come first, followed by their Simplified Chinese
 counterparts. 段落格式：`## <版本号> - <日期>`，条目必须写成单行。
 
+## 0.3.15 - 2026-09-01
+
+### Added / 新增
+
+- **iOS**: CarPlay support — strict 4-tab mirror of the App's main UI (推荐 / 精选 / 漫游 / 我的): 推荐 tab exposes 每日推荐 / 推荐歌单 / 雷达歌单 / 排行榜 / 新碟上架 / 推荐歌手; 精选 tab exposes 精品 / 热门 / 排行榜 / 官方 / 华语; 漫游 tab is a single start/skip row; 我的 tab exposes 我的音乐 (with 每日推荐 / 最近播放 / 音乐云盘 / 我喜欢的音乐) + 创建的歌单 + 收藏的歌单. Now Playing gains a 喜欢 button (always on) and a 不喜欢 / trash button (FM mode only, matching the App's FMView); ±15s skip, shuffle, and repeat commands also route through CarPlay's Now Playing buttons. CarPlay is opt-in and off by default (the audio entitlement stays commented until Apple approval). Thanks @zlfyuan (#69).
+- **iOS**：新增 CarPlay 支持——严格对齐 App 主界面的 4 个 Tab（推荐 / 精选 / 漫游 / 我的）：推荐 tab 含 每日推荐 / 推荐歌单 / 雷达歌单 / 排行榜 / 新碟上架 / 推荐歌手；精选 tab 含 精品 / 热门 / 排行榜 / 官方 / 华语；漫游 tab 单按钮开始/换一首；我的 tab 含 我的音乐（含每日推荐 / 最近播放 / 音乐云盘 / 我喜欢的音乐）+ 创建的歌单 + 收藏的歌单。Now Playing 新增 喜欢按钮（始终可用）和 trash / 不喜欢按钮（仅在 FM 模式显示，对齐 App FMView）；±15秒快进快退、随机、循环按钮均已接通。CarPlay 默认关闭、需手动启用（音频授权在获批前保持注释）。感谢 @zlfyuan（#69）。
+
+### Fixed / 修复
+
+- **iOS**: CarPlay 漫游 tab now reflects the live playback state — a "正在漫游" row surfaces the currently playing track while FM is on, the action button toggles 换一首 / 继续漫游 with the actual isPlaying value, and the tab no longer restarts FM when paused. The CarPlay connector now subscribes to both `$isFMMode` and `$isPlaying` so the FM template refreshes whenever playback state changes.
+- **iOS**：CarPlay 漫游 tab 现在会同步播放状态：FM 模式下显示"正在漫游"行（当前曲目），操作按钮随 `isPlaying` 在"换一首 / 继续漫游"之间切换，FM 暂停时点击按钮是继续而不是重启 FM。CarPlay 连接器同时订阅 `$isFMMode` 和 `$isPlaying`，播放状态变化时刷新 FM 模板。
+- **iOS**: the `com.apple.developer.carplay-audio` entitlement is now left commented in `ios/Config/KumoneIOS.entitlements` by default, and a ready-to-copy template is added at `ios/Config/KumoneIOS.entitlements.example`. CarPlay activation requires the [Apple CarPlay audio capability](https://developer.apple.com/contact/carplay/) which most developer accounts are not granted; leaving the entitlement on without approval breaks real-device builds with `Entitlement ... not found and could not be included in profile`. CarPlay code and Info.plist scene configuration remain in place — once Apple approval lands, just uncomment and re-sign. README updated with the enable steps.
+- **iOS**：`com.apple.developer.carplay-audio` 在 `ios/Config/KumoneIOS.entitlements` 中默认改为注释状态，并新增模板文件 `ios/Config/KumoneIOS.entitlements.example`。CarPlay 激活需要 [Apple CarPlay 音频能力](https://developer.apple.com/contact/carplay/)，多数开发者账号不会被授予；未授权时打开会导致真机签名失败（`Entitlement ... not found and could not be included in profile`）。CarPlay 实现代码与 Info.plist scene 配置保持不变——拿到 Apple 授权后取消注释重新签名即可。README 同步更新启用步骤。
+- **iOS**: fixed the app launching in letterboxed compatibility mode (black bars, oversized UI) on some devices such as iPhone 15 Pro Max — the launch screen was emitted as a malformed nested `UILaunchScreen`; it is now declared flat and correctly, so the app renders at native full-screen resolution. (#71)
+- **iOS**：修复部分设备（如 iPhone 15 Pro Max）以信箱模式（黑边、界面放大）启动的问题——此前 `UILaunchScreen` 被生成为嵌套的错误结构，现改为正确的扁平声明，应用按原生全屏分辨率渲染。（#71）
+- **iOS**: playlist cover cards on 推荐 / 精选 no longer misalign vertically when titles wrap to two lines — the play-count badge and hover button are now overlays that don't affect the cover's layout size. Thanks @sld272 (#68).
+- **iOS**：推荐 / 精选 的歌单封面卡片在标题换行时不再上下错位——播放量徽标与悬浮按钮改为不参与封面尺寸计算的 overlay。感谢 @sld272（#68）。
+- **iPadOS**: Settings and Search are now reachable on iPad — gear + magnifier entries in the sidebar footer. The iPad layout previously had no Settings entry (so audio quality etc. couldn't be changed) and no working search. (#67, #59)
+- **iPadOS**：iPad 现在可以打开设置和搜索——侧栏底部新增齿轮与放大镜入口。此前 iPad 布局没有设置入口（音质等无法切换）、也没有可用的搜索。（#67，#59）
+- **iPadOS**: the landscape now-playing page no longer stretches its two columns edge-to-edge (cramped on the left, a wide blank gutter on the right) — the content band is capped and centred. (#62)
+- **iPadOS**：横屏播放页不再把两栏铺满整个宽度（左侧拥挤、右侧大片留白）——内容区域现在限制最大宽度并居中。（#62）
+- **macOS**: closing the main window (Cmd+W / red button) now hides it instead of destroying the scene, so the Dock icon always brings it back; also covers reopening after minimize and fronting the window when it is hidden behind others. Regression from the #52 single-window change. (#60, #63, #66, #70)
+- **macOS**：用 Cmd+W / 红灯关闭主窗口时改为隐藏而非销毁场景，点击 Dock 图标始终能重新唤出；同时覆盖最小化后重开、以及窗口被其他窗口盖住时的前置。此为 #52 单窗口改动引入的回归。（#60、#63、#66、#70）
+
+### Improved / 改进
+
+- **iOS**: in the immersive now-playing page, tapping the small top-left cover while lyrics (or the queue) are shown collapses back to the full artwork — matching Apple Music. (#50)
+- **iOS**：沉浸播放页在显示歌词（或队列）时，点击左上角的小封面即可收起、回到大封面视图，与 Apple Music 一致。（#50）
+
 ## 0.3.14 - 2026-08-29
 
 ### Added / 新增

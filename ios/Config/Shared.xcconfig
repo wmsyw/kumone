@@ -28,12 +28,13 @@ TARGETED_DEVICE_FAMILY = 1,2
 // Info PLIST
 // ==========================================
 GENERATE_INFOPLIST_FILE = YES
-// Without a launch-screen declaration iOS letterboxes the app
-// in legacy compatibility mode (black bars top and bottom).
-INFOPLIST_KEY_UILaunchScreen_Generation = YES
-// UIBackgroundModes and NSAppTransportSecurity have no INFOPLIST_KEY_*
-// build settings (the latter silently no-ops) — nested keys must come
-// from a partial Info.plist merged with the generated one.
+// The launch screen is declared explicitly as `UILaunchScreen` in
+// Config/Info.plist. Do NOT re-add INFOPLIST_KEY_UILaunchScreen_Generation:
+// it emitted a malformed, nested UILaunchScreen (a UILaunchScreen dict
+// containing another UILaunchScreen dict), which iOS ignores — leaving large
+// devices letterboxed in compatibility mode (#71).
+// UIBackgroundModes likewise has no INFOPLIST_KEY_ setting and must come
+// from the partial Info.plist merged with the generated one.
 INFOPLIST_FILE = Config/Info.plist
 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
 INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationLandscapeRight UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown

@@ -50,6 +50,7 @@ enum SidebarItem: Hashable {
     case home
     case explore
     case fm
+    case search
     case likedSongs
     case daily
     case recents

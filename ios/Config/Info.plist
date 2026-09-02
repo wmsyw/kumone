@@ -4,14 +4,43 @@
 <dict>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
+    <!-- An empty UILaunchScreen opts the app into native full-screen rendering
+         on every device. It MUST be declared explicitly here: the
+         INFOPLIST_KEY_UILaunchScreen_Generation build setting produced a
+         MALFORMED, nested value (UILaunchScreen -> { UILaunchScreen -> {} }),
+         which iOS does not recognise as a valid launch screen — so large
+         devices (e.g. iPhone 15 Pro Max) fell back to letterboxed
+         compatibility mode (#71). The generation setting is removed in
+         Shared.xcconfig in favour of this flat, correct declaration. -->
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>audio</string>
-    </array>
+    <key>UISupportsCarPlay</key>
+    <true/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <true/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>CPTemplateApplicationSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>CarPlay</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
 </dict>
 </plist>
