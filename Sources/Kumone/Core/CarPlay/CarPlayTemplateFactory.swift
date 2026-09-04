@@ -124,6 +124,66 @@ enum CarPlayTemplateFactory {
         return template
     }
 
+    // MARK: - Playback queue
+
+    /// Builds the "Up Next" list shown when the driver taps the Now Playing queue button.
+    ///
+    /// CarPlay's own up-next UI is only wired up for `MPPlayableContentManager`-era apps;
+    /// template apps get an empty button unless they push their own list, which is what this
+    /// template is for. The current track is pinned in its own section so the driver can see
+    /// what's playing without hunting through the queue, and tapping any upcoming row jumps
+    /// straight to it via `PlayerService.jumpTo`.
+    ///
+    /// - Parameters:
+    ///   - current: The playing track, or nil when nothing is loaded.
+    ///   - upcoming: `PlayerService.upcomingTracks` — already ordered and shuffle-aware.
+    ///   - onCurrentTap: Invoked when the pinned "now playing" row is tapped.
+    ///   - onTrackTap: Invoked with the upcoming track the driver picked.
+    static func queueTemplate(
+        current: Track?,
+        upcoming: [Track],
+        onCurrentTap: @escaping () -> Void,
+        onTrackTap: @escaping (Track) -> Void
+    ) -> CPListTemplate {
+        var sections: [CPListSection] = []
+
+        if let current {
+            let item = CPListItem(text: current.name, detailText: current.artistNames)
+            item.accessoryType = .none
+            item.isPlaying = true
+            item.handler = { _, completion in
+                onCurrentTap()
+                completion()
+            }
+            fillArtwork(item, from: current.album.picUrl)
+            sections.append(CPListSection(items: [item], header: "正在播放", sectionIndexTitle: nil))
+        }
+
+        if !upcoming.isEmpty {
+            // CarPlay silently drops anything past CPListTemplate.maximumItemCount, so cap
+            // explicitly at the framework's own limit rather than a guessed number — a NetEase
+            // queue is routinely longer than that. The section header still reports the real
+            // total so the driver can tell the list is partial.
+            let capped = Array(upcoming.prefix(CPListTemplate.maximumItemCount))
+            let items = capped.map { track -> CPListItem in
+                let item = CPListItem(text: track.name, detailText: track.artistNames)
+                item.accessoryType = .none
+                item.handler = { _, completion in
+                    onTrackTap(track)
+                    completion()
+                }
+                return item
+            }
+            sections.append(
+                CPListSection(items: items, header: "即将播放 · \(upcoming.count) 首", sectionIndexTitle: nil)
+            )
+        }
+
+        let template = CPListTemplate(title: "播放队列", sections: sections)
+        template.emptyViewTitleVariants = ["当前没有播放队列"]
+        return template
+    }
+
     // MARK: - Async artwork loading
 
     /// Async-loads the cover image into a `CPListItem` and refreshes the row once it lands.

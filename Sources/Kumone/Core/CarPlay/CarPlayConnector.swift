@@ -27,7 +27,11 @@ public final class CarPlayConnector: NSObject {
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
 
-    // MARK: - Now Playing buttons (like / dislike are created in didConnect and cached)
+    // MARK: - Now Playing buttons
+    // like / dislike are created once in didConnect and cached, because their visual state is
+    // driven by mutable properties (isSelected / isEnabled). shuffle and repeat instead carry
+    // their state in the button *image*, and CPNowPlayingImageButton's image is immutable, so
+    // those two are rebuilt from scratch on every refresh.
     private var likeButton: CPNowPlayingAddToLibraryButton?
     private var dislikeButton: CPNowPlayingImageButton?
 
@@ -67,9 +71,28 @@ public final class CarPlayConnector: NSObject {
         PlayerService.shared.$isFMMode
             .dropFirst()
             .removeDuplicates()
-            .sink { [weak self] isFM in
-                self?.updateNowPlayingButtons(isFMMode: isFM)
+            .sink { [weak self] _ in
+                self?.refreshNowPlayingButtons()
                 self?.updateFMTab()
+            }
+            .store(in: &cancellables)
+
+        // Shuffle / repeat changes → rebuild those two buttons so their icons reflect the new mode.
+        // They can be toggled from the phone, the App UI or CarPlay itself, so CarPlay can't assume
+        // it is the only mutator and has to follow the published state.
+        PlayerService.shared.$shuffleEnabled
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.refreshNowPlayingButtons()
+            }
+            .store(in: &cancellables)
+
+        PlayerService.shared.$repeatMode
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.refreshNowPlayingButtons()
             }
             .store(in: &cancellables)
 
@@ -122,6 +145,7 @@ public final class CarPlayConnector: NSObject {
 
     /// Called when the CarPlay scene disconnects. Clears template references but doesn't stop playback.
     public func didDisconnect() {
+        CPNowPlayingTemplate.shared.remove(self)
         cancellables.removeAll()
         loadGeneration += 1
         loadTask?.cancel()
@@ -154,10 +178,6 @@ public final class CarPlayConnector: NSObject {
         library.tabImage = UIImage(systemName: "person.crop.circle")
         library.emptyViewTitleVariants = [String(localized: "请先登录网易云音乐")]
 
-        let nowPlaying = CPNowPlayingTemplate.shared
-        // 3rd-party audio apps don't have a queue API, so disable the Up Next button to avoid a dead control.
-        nowPlaying.isUpNextButtonEnabled = false
-
         self.recommendTab = recommend
         self.curatedTab = curated
         self.fmTab = fm
@@ -169,15 +189,24 @@ public final class CarPlayConnector: NSObject {
 
     // MARK: - Now Playing button configuration
 
-    /// Creates and caches the like / dislike buttons in didConnect, then installs them on CPNowPlayingTemplate.
+    /// Creates and caches the like / dislike buttons in didConnect, wires up the queue and
+    /// album-artist controls, then installs the button row on CPNowPlayingTemplate.
     /// - like (CPNowPlayingAddToLibraryButton): always shown, mirrors the App's global LikeButton.
-    /// - dislike (CPNowPlayingImageButton): only shown and enabled while in FM mode, mirroring the trash button in the App's FMView.
+    /// - dislike (CPNowPlayingImageButton): only shown while in FM mode, mirroring the trash button in the App's FMView.
+    /// - shuffle / repeat: only shown outside FM mode, where the queue is fixed and reorderable.
+    ///   FM has no queue to shuffle or loop, so showing them there would be dead controls.
     private func configureNowPlayingButtons() {
         let nowPlaying = CPNowPlayingTemplate.shared
-        nowPlaying.isUpNextButtonEnabled = false   // 3rd-party audio apps don't expose a queue API.
+
+        // Up Next: CarPlay leaves this button dead unless the app both enables it and pushes its
+        // own template from the observer callback below.
+        nowPlaying.isUpNextButtonEnabled = true
+        nowPlaying.upNextTitle = "播放队列"
+        nowPlaying.isAlbumArtistButtonEnabled = true
+        nowPlaying.add(self)
 
         // "Like" button — uses the system's "add to library" styled button.
-        let like = CPNowPlayingAddToLibraryButton(handler: { [weak self] _ in
+        let like = CPNowPlayingAddToLibraryButton(handler: { _ in
             guard let trackID = PlayerService.shared.currentTrack?.id else { return }
             Task { await AccountStore.shared.toggleLike(trackID: trackID) }
         })
@@ -194,15 +223,94 @@ public final class CarPlayConnector: NSObject {
         dislike.isEnabled = PlayerService.shared.isFMMode
         self.dislikeButton = dislike
 
-        updateNowPlayingButtons(isFMMode: PlayerService.shared.isFMMode)
+        refreshNowPlayingButtons()
     }
 
-    private func updateNowPlayingButtons(isFMMode: Bool) {
+    /// Recomputes the whole Now Playing button row from current player state.
+    private func refreshNowPlayingButtons() {
         guard let likeButton, let dislikeButton else { return }
+        let player = PlayerService.shared
+        let isFMMode = player.isFMMode
+
         dislikeButton.isEnabled = isFMMode
-        CPNowPlayingTemplate.shared.updateNowPlayingButtons(
-            isFMMode ? [likeButton, dislikeButton] : [likeButton]
+
+        var buttons: [CPNowPlayingButton] = [likeButton]
+        if isFMMode {
+            buttons.append(dislikeButton)
+        } else {
+            buttons.append(makeShuffleButton(enabled: player.shuffleEnabled))
+            buttons.append(makeRepeatButton(mode: player.repeatMode))
+        }
+
+        CPNowPlayingTemplate.shared.updateNowPlayingButtons(buttons)
+    }
+
+    /// A tinted `shuffle` glyph — red when shuffle is on, muted when off.
+    /// The tint has to be baked into the image (`.alwaysOriginal`) because
+    /// CPNowPlayingImageButton exposes no selected/tint state of its own.
+    private func makeShuffleButton(enabled: Bool) -> CPNowPlayingImageButton {
+        let image = nowPlayingGlyph("shuffle", active: enabled)
+        return CPNowPlayingImageButton(image: image) { _ in
+            PlayerService.shared.toggleShuffle()
+        }
+    }
+
+    /// A tinted `repeat` / `repeat.1` glyph tracking the three-state repeat mode.
+    private func makeRepeatButton(mode: RepeatMode) -> CPNowPlayingImageButton {
+        let symbol = mode == .one ? "repeat.1" : "repeat"
+        let image = nowPlayingGlyph(symbol, active: mode != .off)
+        return CPNowPlayingImageButton(image: image) { _ in
+            PlayerService.shared.cycleRepeatMode()
+        }
+    }
+
+    private func nowPlayingGlyph(_ systemName: String, active: Bool) -> UIImage {
+        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: active ? .bold : .regular)
+        let tint: UIColor = active ? .systemRed : .secondaryLabel
+        return UIImage(systemName: systemName, withConfiguration: config)?
+            .withTintColor(tint, renderingMode: .alwaysOriginal)
+            ?? UIImage()
+    }
+
+    // MARK: - Now Playing navigation
+
+    /// Pushes the live playback queue when the driver taps the Up Next button.
+    private func showQueue() {
+        let player = PlayerService.shared
+        let template = CarPlayTemplateFactory.queueTemplate(
+            current: player.currentTrack,
+            upcoming: player.upcomingTracks,
+            onCurrentTap: { [weak self] in
+                self?.interfaceController?.popTemplate(animated: true, completion: nil)
+            },
+            onTrackTap: { [weak self] track in
+                PlayerService.shared.jumpTo(track)
+                self?.interfaceController?.popTemplate(animated: true, completion: nil)
+            }
         )
+        interfaceController?.pushTemplate(template, animated: true, completion: nil)
+    }
+
+    /// Opens the current track's album, falling back to its first artist when the track carries no
+    /// album (cloud-disk uploads and some FM tracks decode with `album.id == 0`).
+    private func showAlbumOrArtistOfCurrentTrack() {
+        guard let track = PlayerService.shared.currentTrack else { return }
+
+        if track.album.id > 0 {
+            pushTracks(
+                title: track.album.name,
+                load: { try? await NeteaseAPI.album(id: track.album.id).songs },
+                context: .album(id: track.album.id, name: track.album.name),
+                source: .album(track.album.id)
+            )
+        } else if let artist = track.artists.first, artist.id > 0 {
+            pushTracks(
+                title: artist.name,
+                load: { try? await NeteaseAPI.artist(id: artist.id).hotSongs },
+                context: .artist(id: artist.id, name: artist.name),
+                source: .artist(artist.id)
+            )
+        }
     }
 
     // MARK: - Data loading
@@ -755,6 +863,21 @@ public final class CarPlayConnector: NSObject {
     /// Library-tab-only refresh (fired when `userPlaylists` changes; doesn't trigger another network roundtrip).
     private func refreshLibraryTab() {
         Task { @MainActor in updateLibraryTab() }
+    }
+}
+
+// MARK: - CPNowPlayingTemplateObserver
+
+// CPNowPlayingTemplateObserver isn't @MainActor-annotated, so the callbacks have to be declared
+// nonisolated and hop back onto the main actor themselves.
+extension CarPlayConnector: CPNowPlayingTemplateObserver {
+
+    public nonisolated func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
+        Task { @MainActor in self.showQueue() }
+    }
+
+    public nonisolated func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
+        Task { @MainActor in self.showAlbumOrArtistOfCurrentTrack() }
     }
 }
 #endif

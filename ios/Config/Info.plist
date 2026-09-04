@@ -18,29 +18,22 @@
     <array>
         <string>audio</string>
     </array>
+    <!-- Expose the app's Documents folder in the Files app (On My iPhone ▸
+         Kumone) so a downloaded update IPA is findable and can be imported into
+         a signing tool. (#73, #50) -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
-    <key>UISupportsCarPlay</key>
-    <true/>
-    <key>UIApplicationSceneManifest</key>
-    <dict>
-        <key>UIApplicationSupportsMultipleScenes</key>
-        <true/>
-        <key>UISceneConfigurations</key>
-        <dict>
-            <key>CPTemplateApplicationSceneSessionRoleApplication</key>
-            <array>
-                <dict>
-                    <key>UISceneConfigurationName</key>
-                    <string>CarPlay</string>
-                    <key>UISceneDelegateClassName</key>
-                    <string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
-                </dict>
-            </array>
-        </dict>
-    </dict>
+    <!-- CarPlay is deliberately absent from this file. UISupportsCarPlay and the
+         CPTemplateApplicationSceneSessionRoleApplication scene declaration are injected
+         into a generated copy of this plist by `make configure-carplay`, because the
+         CarPlay audio entitlement they depend on requires per-app approval from Apple.
+         See Scripts/configure-ios.sh and the CarPlay section of the README. -->
 </dict>
 </plist>

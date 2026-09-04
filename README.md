@@ -98,32 +98,39 @@ for a manual re-sideload.
 
 ### Enabling CarPlay (iOS)
 
-CarPlay support is fully implemented in `Sources/Kumone/Core/CarPlay/` and the
-Info.plist already declares `UISupportsCarPlay` plus the CarPlay scene
-configuration. However the `com.apple.developer.carplay-audio` entitlement is
-**opt-in**: Apple only grants it after you submit a CarPlay audio app
-[application](https://developer.apple.com/contact/carplay/), so it is left
-commented in `ios/Config/KumoneIOS.entitlements` by default — leaving it on
-without approval makes real-device builds fail with:
+CarPlay support is fully implemented in `Sources/Kumone/Core/CarPlay/`, but the
+**default build ships none of it**: no `com.apple.developer.carplay-audio`
+entitlement, no `UISupportsCarPlay`, and no CarPlay scene declaration. Apple
+only grants that entitlement after you submit a CarPlay audio app
+[application](https://developer.apple.com/contact/carplay/), and building with
+it unapproved fails to sign with:
 
 > Entitlement com.apple.developer.carplay-audio not found and could not be
 > included in profile.
 
-To enable CarPlay once your developer account has the entitlement approved:
+So CarPlay is a one-command opt-in instead:
+
+```bash
+make configure-carplay   # enable
+make configure           # back to the default, CarPlay-free build
+```
+
+`make configure-carplay` derives a CarPlay copy of `Config/Info.plist` and
+`Config/KumoneIOS.entitlements` into `ios/Config/Generated/`, then writes
+`ios/Config/CarPlay.local.xcconfig` to point the build at them. All three files
+are untracked, and the Xcode project itself is never modified — so enabling
+CarPlay leaves `git status` clean and produces nothing to review.
+
+Once your developer account has the entitlement approved:
 
 1. Apply for and obtain the **CarPlay (Audio)** capability for your App ID in
-   [Apple Developer → Identifiers](https://developer.apple.com/account/resources/certificates/list).
+   [Apple Developer → Identifiers](https://developer.apple.com/account/resources/identifiers/list).
 2. Regenerate the provisioning profile so it carries the new capability.
-3. Open `ios/Config/KumoneIOS.entitlements`, uncomment the
-   `com.apple.developer.carplay-audio` block (a ready-to-copy template lives in
-   [`ios/Config/KumoneIOS.entitlements.example`](ios/Config/KumoneIOS.entitlements.example)).
-4. In Xcode → **Signing & Capabilities**, add the **CarPlay** capability and
-   tick **Audio**.
-5. `Cmd + Shift + K` and rebuild.
+3. Run `make configure-carplay`.
+4. `Cmd + Shift + K` and rebuild on a device.
 
-A reference template of the entitlement value is provided at
-`ios/Config/KumoneIOS.entitlements.example` — copy it into
-`KumoneIOS.entitlements` once you have Apple approval.
+To test without a car, use the CarPlay Simulator: Xcode ▸ Open Developer Tool ▸
+Simulator, then I/O ▸ External Displays ▸ CarPlay.
 
 ## Building
 

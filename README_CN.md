@@ -83,20 +83,28 @@ brew install owo-network/brew/kumone --cask
 
 ### 启用 CarPlay（iOS）
 
-CarPlay 的实现代码已完整存在于 `Sources/Kumone/Core/CarPlay/`，`Info.plist` 也已声明 `UISupportsCarPlay` 与 CarPlay scene 配置。但 `com.apple.developer.carplay-audio` 这一 entitlement **默认注释掉**，因为它需要先向 Apple 提交 CarPlay 音频应用[申请](https://developer.apple.com/contact/carplay/)并获批；多数账号不会被授予该能力。直接打开该 entitlement 会让真机编译失败：
+CarPlay 的实现代码已完整存在于 `Sources/Kumone/Core/CarPlay/`，但**默认构建完全不包含 CarPlay**：既没有 `com.apple.developer.carplay-audio` entitlement，也没有 `UISupportsCarPlay` 和 CarPlay scene 声明。该 entitlement 需要先向 Apple 提交 CarPlay 音频应用[申请](https://developer.apple.com/contact/carplay/)并获批，未授权就打开会导致签名失败：
 
 > Entitlement com.apple.developer.carplay-audio not found and could not be
 > included in profile.
 
-待 Apple 授权后，按下列步骤启用：
+因此 CarPlay 改为一条命令按需开启：
 
-1. 在 [Apple Developer → Identifiers](https://developer.apple.com/account/resources/certificates/list) 为你的 App ID 勾选 **CarPlay (Audio)** 能力。
+```bash
+make configure-carplay   # 开启
+make configure           # 切回默认的无 CarPlay 构建
+```
+
+`make configure-carplay` 会基于 `Config/Info.plist` 与 `Config/KumoneIOS.entitlements` 派生出带 CarPlay 的副本放进 `ios/Config/Generated/`，再写一个 `ios/Config/CarPlay.local.xcconfig` 把构建指过去。这三个文件都不纳入 git，且**完全不改动 Xcode 工程文件** —— 开启 CarPlay 后 `git status` 依然干净，不会产生任何需要 review 的 diff。
+
+拿到 Apple 授权后：
+
+1. 在 [Apple Developer → Identifiers](https://developer.apple.com/account/resources/identifiers/list) 为你的 App ID 勾选 **CarPlay (Audio)** 能力。
 2. 重新生成 provisioning profile 以携带新能力。
-3. 打开 `ios/Config/KumoneIOS.entitlements`，取消 `com.apple.developer.carplay-audio` 那一段的注释（参考模板见 [`ios/Config/KumoneIOS.entitlements.example`](ios/Config/KumoneIOS.entitlements.example)）。
-4. 在 Xcode → **Signing & Capabilities** 添加 **CarPlay** 能力并勾选 **Audio**。
-5. `Cmd + Shift + K` 清理后重新构建。
+3. 执行 `make configure-carplay`。
+4. `Cmd + Shift + K` 清理后在真机重新构建。
 
-模板文件 `ios/Config/KumoneIOS.entitlements.example` 已就绪——拿到 Apple 授权后，将其内容复制/合并进 `KumoneIOS.entitlements` 即可。
+没有车也可以测试：Xcode ▸ Open Developer Tool ▸ Simulator，然后 I/O ▸ External Displays ▸ CarPlay。
 
 ## 构建
 
