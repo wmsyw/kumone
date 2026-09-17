@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 #if os(macOS)
@@ -53,6 +54,10 @@ public struct KumoneApp: App {
 
                 Divider()
 
+                SleepTimerMenu(player: player)
+
+                Divider()
+
                 Button(player.currentTrack.map { AccountStore.shared.isLiked($0.id) ? String(localized: "取消喜欢") : String(localized: "喜欢") } ?? String(localized: "喜欢")) {
                     if let track = player.currentTrack {
                         Task { await account.toggleLike(trackID: track.id) }
@@ -87,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var shared: AppDelegate?
 
     private var keyMonitor: Any?
+    private var appearanceObserver: AnyCancellable?
     /// Installed by the SwiftUI main scene. Calling it recreates the scene
     /// when its NSWindow was released after the user closed the last window.
     var openMainWindow: (() -> Void)?
@@ -97,6 +103,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
+        // Drive NSApp.appearance from the setting so the NATIVE window chrome
+        // (both main and Settings window titlebars/forms) tracks it. SwiftUI's
+        // `.preferredColorScheme` alone doesn't reliably revert the native
+        // titlebar when switching a fixed theme back to "follow system" (#94).
+        applyAppearance(SettingsManager.shared.appearance.colorScheme)
+        appearanceObserver = SettingsManager.shared.$appearance
+            .map(\.colorScheme)
+            .removeDuplicates()
+            .sink { [weak self] scheme in self?.applyAppearance(scheme) }
         // Space toggles play/pause unless a text field is being edited.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let noModifiers = event.modifierFlags
@@ -119,6 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return nil
             }
             return event
+        }
+    }
+
+    private func applyAppearance(_ scheme: ColorScheme?) {
+        switch scheme {
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil // follow system
         }
     }
 

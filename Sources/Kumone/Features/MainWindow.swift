@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct MainWindow: View {
+    private let externalPath: Binding<[Destination]>?
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
 #endif
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var player: PlayerService
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
@@ -11,13 +13,34 @@ struct MainWindow: View {
 
     #if os(macOS)
     @StateObject private var artworkStore = NowPlayingArtworkStore()
+    #else
+    @EnvironmentObject private var artworkStore: NowPlayingArtworkStore
     #endif
     @State private var selection: SidebarItem = .home
-    @State private var path = NavigationPath()
+    @State private var localPath: [Destination] = []
     @State private var showLogin = false
     @State private var detailWidth: CGFloat = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var visibilityBeforeNowPlaying: NavigationSplitViewVisibility?
+
+    init(path: Binding<[Destination]>? = nil) {
+        externalPath = path
+    }
+
+    private var path: [Destination] {
+        get { externalPath?.wrappedValue ?? localPath }
+        nonmutating set {
+            if let externalPath {
+                externalPath.wrappedValue = newValue
+            } else {
+                localPath = newValue
+            }
+        }
+    }
+
+    private var pathBinding: Binding<[Destination]> {
+        externalPath ?? $localPath
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -32,7 +55,6 @@ struct MainWindow: View {
                 }
         }
         .navigationSplitViewStyle(.balanced)
-        #if os(macOS)
         .overlay(alignment: .trailing) {
             if settings.showMainWindowAmbientBackground, detailWidth > 0 {
                 MainWindowAmbientBackground(
@@ -42,7 +64,6 @@ struct MainWindow: View {
                     .frame(width: detailWidth)
             }
         }
-        #endif
         .toolbar {
             if #available(macOS 26.0, iOS 26.0, *) {
                 ToolbarItem(placement: .primaryAction) {
@@ -75,13 +96,15 @@ struct MainWindow: View {
                     showsTitlebarAmbientBackground: !player.showNowPlaying,
                     colors: artworkStore.colors,
                     mainColumnWidth: detailWidth,
-                    intensity: settings.mainWindowAmbientBackgroundIntensity
+                    intensity: settings.mainWindowAmbientBackgroundIntensity,
+                    isDark: isDarkAppearance
                 )
             )
         )
         #endif
         .playerChrome(detailWidth: detailWidth)
         .environment(\.openLogin, { showLogin = true })
+        .environment(\.openDestination, openDestination)
         #if os(macOS)
         .environmentObject(artworkStore)
         #endif
@@ -125,14 +148,14 @@ struct MainWindow: View {
         .overlay {
             if player.showNowPlaying {
                 #if os(macOS)
-                NowPlayingView()
+                NowPlayingView(onOpenDestination: openDestination)
                     .environmentObject(artworkStore)
                     // Resolve the slide at the page boundary, including artwork
                     // inserted asynchronously while the transition is running.
                     .geometryGroup()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 #else
-                NowPlayingView()
+                NowPlayingView(onOpenDestination: openDestination)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 #endif
             }
@@ -149,14 +172,32 @@ struct MainWindow: View {
     }
 
     private var detailStack: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: pathBinding) {
             rootView
                 .playerContentInset()
                 .appDestinations()
         }
         .onChange(of: selection) { _ in
-            path = NavigationPath()
+            path = []
         }
+    }
+
+    private func openDestination(_ destination: Destination) {
+        #if os(macOS)
+        guard player.showNowPlaying else {
+            path.appendIfNotCurrent(destination)
+            return
+        }
+
+        withAnimation(AppAnimation.smooth, completionCriteria: .removed) {
+            player.showNowPlaying = false
+        } completion: {
+            path.appendIfNotCurrent(destination)
+        }
+        #else
+        player.showNowPlaying = false
+        path.appendIfNotCurrent(destination)
+        #endif
     }
 
     @ViewBuilder
@@ -211,6 +252,10 @@ struct MainWindow: View {
     #if os(macOS)
     private var needsCurrentArtwork: Bool {
         settings.showMainWindowAmbientBackground || player.showNowPlaying
+    }
+
+    private var isDarkAppearance: Bool {
+        (settings.appearance.colorScheme ?? colorScheme) == .dark
     }
     #endif
 }

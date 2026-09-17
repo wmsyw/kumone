@@ -125,6 +125,7 @@ final class PlayerService: ObservableObject {
     @Published private(set) var isTrial = false
     let clock = PlaybackClock()
     let lyricsCursor = LyricsCursor()
+    let sleepTimer = SleepTimer()
     /// Passthrough to the clock so existing `progress` reads/writes keep working.
     var progress: TimeInterval {
         get { clock.progress }
@@ -186,6 +187,9 @@ final class PlayerService: ObservableObject {
 
     private init() {
         engine.actionAtItemEnd = .pause
+        sleepTimer.onDeadlineReached = { [weak self] in
+            self?.pause()
+        }
         volume = UserDefaults.standard.object(forKey: "player.volume") as? Float ?? 0.8
         engine.volume = volume
         repeatMode =
@@ -346,6 +350,7 @@ final class PlayerService: ObservableObject {
         } else {
             engine.play()
             isPlaying = true
+            scrobbleStartIfNeeded()
         }
         NowPlayingManager.shared.updateElapsed(progress, rate: isPlaying ? 1 : 0)
     }
@@ -555,6 +560,17 @@ final class PlayerService: ObservableObject {
         currentItemTerminalHandled = true
         removeItemObservers()
         scrobbleIfNeeded(completed: true)
+
+        if sleepTimer.consumeEndOfCurrentTrack() {
+            progress = duration
+            updateLyricsCursor(at: duration)
+            pause()
+            engine.replaceCurrentItem(with: nil)
+            return
+        }
+
+        guard isPlaying else { return }
+
         if repeatMode == .one, !isFMMode {
             currentItemTerminalHandled = false
             observeItem(item, generation: generation)
@@ -753,6 +769,10 @@ final class PlayerService: ObservableObject {
             ).reason
             ToastCenter.shared.show(
                 String(localized: "《\(track.name)》无法播放\(reason.map { "：\($0)" } ?? "")"))
+            guard isPlaying else {
+                engine.replaceCurrentItem(with: nil)
+                return
+            }
             if consecutiveFailures < 5 {
                 advanceToNext(userInitiated: false)
             } else {
@@ -785,14 +805,9 @@ final class PlayerService: ObservableObject {
         }
         observeItem(item, generation: generation)
         engine.replaceCurrentItem(with: item)
-        engine.play()
-        isPlaying = true
-
-        if !startScrobbled {
-            startScrobbled = true
-            let tid = track.id
-            let sid = source.sourceID
-            Task.detached { await NeteaseAPI.scrobbleStart(trackID: tid, sourceID: sid) }
+        if isPlaying {
+            engine.play()
+            scrobbleStartIfNeeded()
         }
 
         if let time = data?.time, time > 0 {
@@ -826,6 +841,16 @@ final class PlayerService: ObservableObject {
     }
 
     // MARK: - Scrobble
+
+    private func scrobbleStartIfNeeded() {
+        guard let track = currentTrack, !startScrobbled else { return }
+        startScrobbled = true
+        let trackID = track.id
+        let sourceID = source.sourceID
+        Task.detached {
+            await NeteaseAPI.scrobbleStart(trackID: trackID, sourceID: sourceID)
+        }
+    }
 
     private func scrobbleIfNeeded(completed: Bool) {
         guard let track = currentTrack, !scrobbled, progress > 1 else { return }
