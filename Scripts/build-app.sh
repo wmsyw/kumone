@@ -52,10 +52,13 @@ build_slice() { # [triple] — prints nothing; sets SLICE_BIN_PATH
 }
 
 SLICE_BINARIES=()
+TMP_SLICES="$(mktemp -d)"
+trap 'rm -rf "$TMP_SLICES"' EXIT
 if [ -n "${ARCHES:-}" ]; then
   for arch in $ARCHES; do
     build_slice "$arch-apple-macosx"
-    SLICE_BINARIES+=("$SLICE_BIN_PATH/$APP_NAME")
+    cp "$SLICE_BIN_PATH/$APP_NAME" "$TMP_SLICES/$APP_NAME-$arch"
+    SLICE_BINARIES+=("$TMP_SLICES/$APP_NAME-$arch")
     # Resources and the metallib search below use the first slice's tree;
     # every slice carries the same resources.
     BIN_PATH="${BIN_PATH:-$SLICE_BIN_PATH}"
