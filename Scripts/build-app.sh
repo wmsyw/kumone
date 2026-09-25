@@ -222,6 +222,6 @@ if [ -n "${ARCHES:-}" ]; then
 fi
 
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
-codesign --force --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
 
 echo "Built $APP_BUNDLE ($CONF, $GIT_COMMIT)"
