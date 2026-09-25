@@ -222,7 +222,6 @@ final class PlayerService: ObservableObject {
         let t = engine.position(of: activeDeck)
         return t.isFinite ? t : progress
     }
-
     private var resolveGeneration = 0
     /// True while the engine is paused by us (togglePlayPause/pause/
     /// interruption). When false, "resume" must re-issue play() instead —
@@ -761,13 +760,7 @@ final class PlayerService: ObservableObject {
         startPlaying(activeQueue[idx])
     }
 
-    private func handleItemEnded(_ item: AVPlayerItem, generation: Int) {
-        guard generation == resolveGeneration,
-            engine.currentItem === item,
-            !currentItemTerminalHandled
-        else { return }
-        currentItemTerminalHandled = true
-        removeItemObservers()
+    private func handleItemEnded() {
         scrobbleIfNeeded(completed: true)
 
         if sleepTimer.consumeEndOfCurrentTrack() {
@@ -788,8 +781,6 @@ final class PlayerService: ObservableObject {
         guard isPlaying else { return }
 
         if repeatMode == .one, !isFMMode {
-            currentItemTerminalHandled = false
-            observeItem(item, generation: generation)
             scrobbled = false
             if hasLocalFile {
                 progress = 0
@@ -804,124 +795,6 @@ final class PlayerService: ObservableObject {
             return
         }
         advanceToNext(userInitiated: false)
-    }
-
-    private func handleItemStatusChange(_ item: AVPlayerItem, generation: Int) {
-        guard generation == resolveGeneration, engine.currentItem === item else { return }
-        switch item.status {
-        case .readyToPlay:
-            consecutiveFailures = 0
-            // A ready item that is already playing has completed startup. Keep the
-            // timeout alive while AVPlayer is still waiting, since some URLs report
-            // ready before ever delivering data.
-            if engine.timeControlStatus != .waitingToPlayAtSpecifiedRate
-                || progress > 0.05
-            {
-                cancelItemStartupTimeout()
-            }
-        case .failed:
-            handleItemFailure(item, generation: generation)
-        case .unknown:
-            break
-        @unknown default:
-            break
-        }
-    }
-
-    private func handleItemFailure(_ item: AVPlayerItem, generation: Int) {
-        guard generation == resolveGeneration,
-            engine.currentItem === item,
-            !currentItemTerminalHandled
-        else { return }
-        currentItemTerminalHandled = true
-        removeItemObservers()
-        engine.pause()
-        engine.replaceCurrentItem(with: nil)
-        isPlaying = false
-        isBuffering = false
-        NowPlayingManager.shared.updateElapsed(progress, rate: 0)
-
-        consecutiveFailures += 1
-        if consecutiveFailures < 5 {
-            if let track = currentTrack {
-                ToastCenter.shared.show(String(localized: "《\(track.name)》音源加载失败，已跳过"))
-            } else {
-                ToastCenter.shared.show(String(localized: "音源加载失败，已跳过"))
-            }
-            advanceToNext(userInitiated: false)
-        } else {
-            ToastCenter.shared.show(String(localized: "连续多首音源加载失败，已停止播放"))
-        }
-    }
-
-    private func observeItem(_ item: AVPlayerItem, generation: Int) {
-        removeItemObservers()
-        itemStatusObservation = item.observe(\.status, options: [.initial, .new]) {
-            [weak self] item, _ in
-            Task { @MainActor in
-                self?.handleItemStatusChange(item, generation: generation)
-            }
-        }
-        itemFailureObserver = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main
-        ) { [weak self, weak item] _ in
-            guard let item else { return }
-            Task { @MainActor in
-                self?.handleItemFailure(item, generation: generation)
-            }
-        }
-        endObserver = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
-        ) { [weak self, weak item] _ in
-            guard let item else { return }
-            Task { @MainActor in
-                self?.handleItemEnded(item, generation: generation)
-            }
-        }
-        scheduleItemStartupTimeout(item, generation: generation)
-    }
-
-    private func cancelItemStartupTimeout() {
-        itemStartupTimeoutTask?.cancel()
-        itemStartupTimeoutTask = nil
-    }
-
-    private func scheduleItemStartupTimeout(_ item: AVPlayerItem, generation: Int) {
-        cancelItemStartupTimeout()
-        itemStartupTimeoutTask = Task { [weak self, weak item] in
-            try? await Task.sleep(for: .seconds(12))
-            guard !Task.isCancelled, let self, let item else { return }
-            guard generation == self.resolveGeneration,
-                self.engine.currentItem === item,
-                !self.currentItemTerminalHandled
-            else { return }
-
-            let hasValidProgress = self.progress.isFinite && self.progress > 0.05
-            let isWaiting = self.engine.timeControlStatus == .waitingToPlayAtSpecifiedRate
-            guard item.status != .readyToPlay || (isWaiting && !hasValidProgress) else {
-                self.cancelItemStartupTimeout()
-                return
-            }
-            self.handleItemFailure(item, generation: generation)
-        }
-    }
-
-    private func observeStartupProgress(_ time: CMTime) {
-        guard time.isValid, time.seconds.isFinite, time.seconds > 0.05 else { return }
-        cancelItemStartupTimeout()
-    }
-
-    private func removeItemObservers() {
-        cancelItemStartupTimeout()
-        itemStatusObservation = nil
-        if let itemFailureObserver {
-            NotificationCenter.default.removeObserver(itemFailureObserver)
-            self.itemFailureObserver = nil
-        }
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-            self.endObserver = nil
-        }
     }
 
     // MARK: - Source resolution
@@ -1038,8 +911,7 @@ final class PlayerService: ObservableObject {
         let quality = SettingsManager.shared.audioQuality.rawValue
         var data = try? await NeteaseAPI.songURL(ids: [track.id], level: quality).first
         if data?.url == nil, quality != AudioQuality.standard.rawValue {
-            data = try? await NeteaseAPI.songURL(ids: [track.id], level: AudioQuality.standard.rawValue)
-                .first
+            data = try? await NeteaseAPI.songURL(ids: [track.id], level: AudioQuality.standard.rawValue).first
         }
         var url: URL?
         var unblock: String?
@@ -3523,8 +3395,7 @@ final class PlayerService: ObservableObject {
         case .autoMix: autoMixQueue = queue
         }
         if let id = state.currentID,
-            let idx = activeQueue.firstIndex(where: { $0.id == id })
-        {
+           let idx = activeQueue.firstIndex(where: { $0.id == id }) {
             currentIndex = idx
             currentTrack = activeQueue[idx]
             duration = activeQueue[idx].duration
