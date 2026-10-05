@@ -40,12 +40,21 @@ struct SkeletonCardView: View {
 }
 
 struct SkeletonShelf: View {
- var body: some View {
-  VStack(alignment: .leading, spacing: 14) {
-   SkeletonView(cornerRadius: 4).frame(width: 120, height: 20)
-   HStack(spacing: 16) {
-    ForEach(0..<6, id: \.self) { _ in
-     SkeletonCardView()
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SkeletonView(cornerRadius: 4).frame(width: 120, height: 20)
+            GeometryReader { geometry in
+                let cardSize = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: 0)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            SkeletonCardView(size: cardSize)
+                        }
+                    }
+                }
+            }
+            .frame(height: Theme.Layout.coverShelfHeight)
+        }
     }
    }
   }

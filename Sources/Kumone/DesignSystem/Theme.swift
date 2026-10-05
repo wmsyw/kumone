@@ -24,6 +24,13 @@ enum Theme {
         static let cardSize: CGFloat = 160
         /// Fixed space for two 13pt cover-card title lines.
         static let coverCardTitleHeight: CGFloat = 32
+
+        static func fittedShelfCardSize(availableWidth: CGFloat, leadingInset: CGFloat, spacing: CGFloat = 16) -> CGFloat {
+            let usableWidth = availableWidth - leadingInset - spacing
+            // A zero-width proposal while the split view is resizing still needs one 1pt card.
+            let visibleCount = max(1, Int(ceil((usableWidth + spacing) / (cardSize + spacing))))
+            return max(1, (usableWidth - CGFloat(visibleCount - 1) * spacing) / CGFloat(visibleCount))
+        }
         /// Row height for a shelf of cover cards: artwork, then up to two lines
         /// of title and one of subtitle.
         static let coverShelfHeight: CGFloat = 226
