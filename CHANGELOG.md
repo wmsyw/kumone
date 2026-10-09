@@ -7,25 +7,29 @@
 `---` 分隔，随后是完整的**中文**部分（`### 新增` / `### 修复` / `### 改进`）。英文块与中文块
 的条目一一对应、顺序一致。（0.3.19 起采用此双语分块格式；更早的版本沿用旧的中英交替格式。）
 
-## 0.3.21 - 2026-10-03
+## 0.3.21 - 2026-10-08
 
 ### Added
 
 - **iOS + macOS**: offline downloads — download songs and whole playlists for offline listening, with a 「已下载」 library and a storage page to see usage and manage space. Thanks @xyspg (#111).
+- **macOS**: customizable keyboard shortcuts for playback actions, plus optional system-wide (global) hotkeys — set them under Settings → 快捷键. Global hotkeys are off by default. Thanks @WillowBranch127 (#125, closes #122).
 
 ### Fixed
 
 - **iOS + macOS**: NetEase audio now retries on the twin CDN host when one host is unreachable — fixing playback that occasionally stalled mid-queue (progress kept running) or wouldn't replay a just-played song on a poor network. Thanks @xyspg (#115, closes #106).
+- **macOS**: AutoMix no longer jumps the playhead backward (misaligning the progress bar and lyrics) when you pause and then resume. Thanks @WillowBranch127 (#126).
 
 ---
 
 ### 新增
 
 - **iOS + macOS**：离线下载——可下载单曲和整个歌单离线收听,新增「已下载」库和存储用量 / 管理页。感谢 @xyspg（#111）。
+- **macOS**：可自定义播放等操作的键盘快捷键,并支持可选的全局(系统级)快捷键——在 设置 → 快捷键 里设置,全局快捷键默认关闭。感谢 @WillowBranch127（#125，关闭 #122）。
 
 ### 修复
 
 - **iOS + macOS**：网易云音频在某个 CDN 主机不可达时会自动重试其孪生主机——修复了弱网下偶发的「队列中途卡住(进度还在走)」和「刚听过的歌无法重播」。感谢 @xyspg（#115，关闭 #106）。
+- **macOS**：AutoMix 暂停后恢复播放时,播放头不再往回跳(导致进度条和歌词错位)。感谢 @WillowBranch127（#126）。
 
 ## 0.3.20 - 2026-10-03
 
