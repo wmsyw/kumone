@@ -23,8 +23,7 @@ struct MainWindow: View {
     @State private var selection: SidebarItem = .home
     @State private var localPath: [Destination] = []
     @State private var showLogin = false
-    @State private var detailWidth: CGFloat = 0
-    @State private var mainColumnLeadingInset: CGFloat = 0
+    @State private var mainColumnGeometry = MainColumnGeometry()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var nowPlayingChromeHidden = false
     @State private var nowPlayingChromeFadedOut = false
@@ -55,22 +54,21 @@ struct MainWindow: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: Theme.Layout.sidebarWidth, max: 280)
         } detail: {
             detailStack
-                .onGeometryChange(for: CGRect.self) { proxy in
-                    proxy.frame(in: .named("mainWindow"))
-                } action: { frame in
-                    detailWidth = frame.width
-                    mainColumnLeadingInset = frame.minX
+                .onGeometryChange(for: MainColumnGeometry.Layout.self) { proxy in
+                    MainColumnGeometry.Layout(frame: proxy.frame(in: .named("mainWindow")))
+                } action: { layout in
+                    mainColumnGeometry.update(layout)
                 }
         }
         .navigationSplitViewStyle(.balanced)
         .coordinateSpace(name: "mainWindow")
         .overlay(alignment: .trailing) {
-            if settings.showMainWindowAmbientBackground, detailWidth > 0 {
-                MainWindowAmbientBackground(
+            if settings.showMainWindowAmbientBackground {
+                MainColumnAmbientOverlay(
+                    geometry: mainColumnGeometry,
                     colors: artworkStore.colors,
                     intensity: settings.mainWindowAmbientBackgroundIntensity
                 )
-                    .frame(width: detailWidth)
             }
         }
         .toolbar {
@@ -115,12 +113,12 @@ struct MainWindow: View {
         // Dock icon can always bring it back (#60/#63/#66/#70).
         .background(
             MainWindowConfigurator(
+                geometry: mainColumnGeometry,
                 ambientConfiguration: MainWindowAmbientConfiguration(
                     showsAmbientBackground: settings.showMainWindowAmbientBackground,
                     showsTitlebarAmbientBackground: !nowPlayingChromeHidden,
                     showsNowPlaying: player.showNowPlaying,
                     colors: artworkStore.colors,
-                    mainColumnLeadingInset: mainColumnLeadingInset,
                     intensity: settings.mainWindowAmbientBackgroundIntensity,
                     isDark: isDarkAppearance
                 ),
@@ -129,7 +127,7 @@ struct MainWindow: View {
             )
         )
         #endif
-        .playerChrome(detailWidth: detailWidth)
+        .playerChrome(geometry: mainColumnGeometry)
         #if os(macOS)
         .modifier(OfflinePlaybackAlert(player: player, onDownloads: { openDestination(.downloaded) }))
         .modifier(MeteredDownloadAlert())
@@ -350,6 +348,7 @@ struct ArrowCursorOverride: NSViewRepresentable {
 /// can front it again on a Dock click. Every other window-delegate callback is
 /// forwarded untouched to SwiftUI's own delegate.
 struct MainWindowConfigurator: NSViewRepresentable {
+    @ObservedObject var geometry: MainColumnGeometry
     let ambientConfiguration: MainWindowAmbientConfiguration
     /// Hides the titlebar text while the immersive page covers the window;
     /// the window buttons stay on top of the page (#128).
@@ -364,10 +363,11 @@ struct MainWindowConfigurator: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
+        let configuration = resolvedAmbientConfiguration
         DispatchQueue.main.async {
             context.coordinator.requestAmbientBackgroundConfiguration(
                 from: view,
-                ambientConfiguration: ambientConfiguration
+                ambientConfiguration: configuration
             )
             context.coordinator.setTitlebarFadedOut(titlebarFadedOut)
             context.coordinator.setToolbarHidden(toolbarHidden)
@@ -376,14 +376,21 @@ struct MainWindowConfigurator: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        let configuration = resolvedAmbientConfiguration
         DispatchQueue.main.async {
             context.coordinator.requestAmbientBackgroundConfiguration(
                 from: nsView,
-                ambientConfiguration: ambientConfiguration
+                ambientConfiguration: configuration
             )
             context.coordinator.setTitlebarFadedOut(titlebarFadedOut)
             context.coordinator.setToolbarHidden(toolbarHidden)
         }
+    }
+
+    private var resolvedAmbientConfiguration: MainWindowAmbientConfiguration {
+        var configuration = ambientConfiguration
+        configuration.mainColumnLeadingInset = geometry.layout.leadingInset
+        return configuration
     }
 
     @MainActor
@@ -399,7 +406,6 @@ struct MainWindowConfigurator: NSViewRepresentable {
         /// The item views the immersive page swaps out, kept so the home page
         /// gets them back; see `suppressImmersiveToolbarItems`.
         private var hiddenToolbarItemViews: [String: NSView] = [:]
-        private var toolbarItemStandIn: NSView?
         /// Separator items the page hides (they have no view to swap).
         private var hiddenToolbarSeparatorIdentifiers: Set<String> = []
 
@@ -463,9 +469,11 @@ struct MainWindowConfigurator: NSViewRepresentable {
             if windowToolbarHidden {
                 for item in toolbar.items {
                     if let view = item.view {
-                        guard view !== standInToolbarItemView() else { continue }
+                        guard !(view is HiddenToolbarItemView) else { continue }
                         hiddenToolbarItemViews[item.itemIdentifier.rawValue] = view
-                        item.view = standInToolbarItemView()
+                        // One stand-in per item: a view has a single
+                        // superview, so a shared one would hop between items.
+                        item.view = HiddenToolbarItemView()
                     } else if item.itemIdentifier.rawValue.lowercased().contains("separator"),
                               !item.isHidden {
                         hiddenToolbarSeparatorIdentifiers.insert(item.itemIdentifier.rawValue)
@@ -478,7 +486,7 @@ struct MainWindowConfigurator: NSViewRepresentable {
                     guard let item = toolbar.items.first(where: {
                         $0.itemIdentifier.rawValue == identifier
                     }),
-                    item.view === standInToolbarItemView() else { continue }
+                    item.view is HiddenToolbarItemView else { continue }
                     item.view = original
                 }
                 for identifier in hiddenToolbarSeparatorIdentifiers {
@@ -488,13 +496,6 @@ struct MainWindowConfigurator: NSViewRepresentable {
                     }?.isHidden = false
                 }
             }
-        }
-
-        private func standInToolbarItemView() -> NSView {
-            if let toolbarItemStandIn { return toolbarItemStandIn }
-            let standIn = HiddenToolbarItemView()
-            toolbarItemStandIn = standIn
-            return standIn
         }
 
         func attach(to window: NSWindow?) {
