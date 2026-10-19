@@ -623,53 +623,33 @@ enum PlaybackRescheduleCheck {
     }
 }
 
-/// **What a global pause does to a player node's clock**, as arithmetic that
-/// can be checked without an engine.
+/// **How long a global pause keeps rendering before it freezes the engine.**
 ///
-/// **The field bug.** `AVAudioEngine.pause()` freezes rendering, and while it
-/// is paused `AVAudioPlayerNode.lastRenderTime` is nil — so far so good. But
-/// the node's *timeline* is not frozen with it: after `engine.start()`,
-/// `playerTime(forNodeTime: lastRenderTime!)` reports a sample time that
-/// includes the whole of the paused wall clock. Measured on this hardware,
-/// with both an ordinary `play()` and a host-clock `play(at:)`: one second
-/// played, two seconds paused, half a second after resume reports **3.508 s**
-/// — while the audio itself correctly resumes from 1 s. The clock lies; the
-/// audio does not.
+/// The pause stops the player nodes at once, but the audio they already
+/// rendered is still on its way out: inside the deck chain (time-pitch, EQ,
+/// delay) and the master path, in the IO cycle being rendered, and in whatever
+/// the device presents behind that — a Bluetooth or AirPlay route holds far
+/// more of it than built-in speakers do. Freezing the engine before that has
+/// played out leaves it in the chain, to be played on resume ahead of a
+/// render cycle of silence (`play()` waits for an IO cycle): the #136 hole.
 ///
-/// The consequence is not cosmetic. A user paused at 12:57:09 and resumed at
-/// 13:00:31; deck a had really played ~91 s, the engine read ~293 s, and that
-/// is past the transition's out point (230.6 s) — so the crossfade fired the
-/// instant playback came back.
-///
-/// **The fix.** Every pause that a node's schedule survives adds its wall
-/// duration to that deck's `pauseSkew`, and every position read subtracts it.
-/// A deck that is re-cued or started fresh gets a new anchor (`startOffset`)
-/// and its skew goes back to zero with it — the skew only ever describes the
-/// gap between *this* anchor and the node clock that is still counting from it.
-enum PausedClockSkew {
+/// So the drain covers all of it, two IO cycles for the one being rendered and
+/// the one the late start costs, and never less than the chain depth measured
+/// on built-in output; a margin on top absorbs the timer. See
+/// `PlaybackEngine.pause()` for the measurements.
+enum PauseDrain {
+    /// Audio the deck chain and master path hold behind a player node,
+    /// measured on this graph. Also the seek flush window.
+    static let chainDepth: TimeInterval = 0.25
+    static let margin: TimeInterval = 0.05
+    /// A ringing echo is faded out over this much of the drain, which has to
+    /// finish before the drain ends and the tail is cut.
+    static let echoFade: TimeInterval = 0.12
 
-    /// Accumulate: two pauses in one schedule are two lots of wall clock the
-    /// node counted and the song did not. Negatives cannot happen from a
-    /// monotonic host clock, and are refused rather than allowed to walk the
-    /// playhead forward.
-    static func skew(after paused: TimeInterval, existing: TimeInterval) -> TimeInterval {
-        max(0, existing) + max(0, paused)
-    }
-
-    /// The corrected position, floored at the anchor it was cued from.
-    ///
-    /// The floor is the same one the raw read has always had — `sampleTime` is
-    /// briefly negative after a `play(at:)` — and it doubles as the guarantee
-    /// that a skew can only ever hold the playhead back to where the deck
-    /// started, never behind it.
-    static func position(raw: TimeInterval, startOffset: TimeInterval,
-                         skew: TimeInterval) -> TimeInterval {
-        max(startOffset, raw - max(0, skew))
-    }
-
-    /// `resume skew paused=202.3s deck=a total=202.3s`
-    static func line(deck: String, paused: TimeInterval, total: TimeInterval) -> String {
-        String(format: "resume skew paused=%.1fs deck=%@ total=%.1fs", paused, deck, total)
+    static func duration(chainLatency: TimeInterval, presentationLatency: TimeInterval,
+                         ioBuffer: TimeInterval) -> TimeInterval {
+        let measured = max(0, chainLatency) + max(0, presentationLatency) + 2 * max(0, ioBuffer)
+        return max(chainDepth, measured) + margin
     }
 }
 

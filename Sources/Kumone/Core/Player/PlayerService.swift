@@ -300,6 +300,7 @@ final class PlayerService: ObservableObject {
     private var offlineScanID = UUID()
     private var networkState = DownloadNetworkState.unknown
     private var networkObservation: AnyCancellable?
+    private var queueOrderSettingsObservation: AnyCancellable?
     private var offlineActivatedScope: String?
     /// Set by an automatic advance and consumed by `startPlaying`: a song that
     /// turns out to be missing offline is skipped rather than reported.
@@ -410,6 +411,14 @@ final class PlayerService: ObservableObject {
             self?.networkState = network
         }
         restoreState()
+        let settings = SettingsManager.shared
+        queueOrderSettingsObservation = settings.$automixEnabled
+            .combineLatest(settings.$automixOrderEnabled)
+            .map { $0 && $1 }
+            .removeDuplicates()
+            // @Published emits before assignment; reconcile after both values are stored.
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.reconcileQueueOrderAvailability() }
     }
 
     /// Set while the user drags the seek bar so the time observer doesn't fight the thumb.
@@ -623,7 +632,7 @@ final class PlayerService: ObservableObject {
     /// The AutoMix order's switch was turned off (or the master was) while the
     /// queue was in that order: fall back to the list the user gave us, rather
     /// than leaving a mode running that the settings say is gone.
-    func reconcileQueueOrderAvailability() {
+    private func reconcileQueueOrderAvailability() {
         guard queueOrder == .autoMix, !autoMixOrderAvailable else { return }
         setQueueOrder(.listed)
     }

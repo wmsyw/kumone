@@ -143,9 +143,11 @@ import Foundation
         // A full-scale quarter-rate sine, offset so every sample lands at 45°
         // either side of a crest the grid never touches: sample peak −3.01 dB,
         // real peak 0. The textbook case for why sample peak is not enough.
-        let sine = (0..<4096).map {
-            sin(2 * Float.pi * Float(sampleRate / 4) * Float($0) / Float(sampleRate)
-                + Float.pi / 4)
+        let angularScale = 2 * Float.pi * Float(sampleRate / 4)
+        let phase = Float.pi / 4
+        let sine: [Float] = (0..<4096).map { index in
+            let angle = angularScale * Float(index) / Float(sampleRate) + phase
+            return sin(angle)
         }
         let samplePeak = LoudnessMeter.peakDBFS(sine)!
         let truePeak = LoudnessMeter.truePeakDBTP(sine)!

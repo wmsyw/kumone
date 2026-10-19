@@ -567,87 +567,35 @@ private func AVAudioFramePositionForTest(_ value: Double) -> Int64 { Int64(value
     }
 }
 
-// The paused-clock correction, as arithmetic. The behaviour it models cannot
-// be reached without an audio device — `AVAudioPlayerNode`'s clock only lies
-// about a real pause of a real engine — so what is tested here is the rule the
-// engine applies once someone tells it how long the pause was.
-@Suite struct PausedClockSkewTests {
+// How long a global pause renders before it freezes the engine.
+@Suite struct PauseDrainTests {
 
-    /// The measured case: 1 s played, 2 s paused, 0.5 s after resume. The node
-    /// clock reports 3.5 s; the song is at 1.5 s.
-    @Test func theMeasuredPauseIsSubtracted() {
-        let skew = PausedClockSkew.skew(after: 2, existing: 0)
-        #expect(skew == 2)
-        #expect(PausedClockSkew.position(raw: 3.5, startOffset: 0, skew: skew) == 1.5)
+    /// Built-in output, as measured on this graph: chain 0.094 s, presentation
+    /// 0.002 s, a 512-frame IO cycle at 48 kHz. Under the chain depth, so the
+    /// chain depth plus the margin.
+    @Test func aShortChainGetsTheChainDepth() {
+        let d = PauseDrain.duration(chainLatency: 0.094, presentationLatency: 0.0018,
+                                    ioBuffer: 512.0 / 48_000)
+        #expect(abs(d - (PauseDrain.chainDepth + PauseDrain.margin)) < 1e-9)
     }
 
-    /// The field incident: paused at 12:57:09, resumed at 13:00:31, deck a
-    /// really 91 s into the song and reported at ~293 s — past the 230.6 s out
-    /// point, so the crossfade fired on resume.
-    @Test func theFieldIncidentLandsBeforeTheOutPoint() {
-        let paused: TimeInterval = 202
-        let skew = PausedClockSkew.skew(after: paused, existing: 0)
-        let corrected = PausedClockSkew.position(raw: 293, startOffset: 0, skew: skew)
-        #expect(abs(corrected - 91) < 0.5)
-        #expect(corrected < 230.6)
+    /// A Bluetooth route presents a quarter second and more on its own; the
+    /// drain has to outlast all of it or the hole comes back.
+    @Test func aLongRouteIsCoveredInFull() {
+        let d = PauseDrain.duration(chainLatency: 0.094, presentationLatency: 0.25,
+                                    ioBuffer: 0.02)
+        #expect(abs(d - (0.094 + 0.25 + 0.04 + PauseDrain.margin)) < 1e-9)
     }
 
-    /// Two pauses in one schedule are two lots of wall clock the node counted.
-    @Test func skewAccumulatesAcrossPauses() {
-        var skew = PausedClockSkew.skew(after: 5, existing: 0)
-        skew = PausedClockSkew.skew(after: 7, existing: skew)
-        #expect(skew == 12)
-        #expect(PausedClockSkew.position(raw: 100, startOffset: 0, skew: skew) == 88)
+    /// A latency the system could not report is not allowed to shorten it.
+    @Test func negativesCountAsNothing() {
+        let d = PauseDrain.duration(chainLatency: -1, presentationLatency: -1, ioBuffer: -1)
+        #expect(d == PauseDrain.chainDepth + PauseDrain.margin)
     }
 
-    /// The floor. A deck cued at 120 s can never be reported behind 120 s,
-    /// whatever the skew says — an over-correction would walk the playhead
-    /// backwards into audio that has already played.
-    @Test func positionNeverGoesBelowTheStartOffset() {
-        #expect(PausedClockSkew.position(raw: 122, startOffset: 120, skew: 30) == 120)
-        #expect(PausedClockSkew.position(raw: 120, startOffset: 120, skew: 0) == 120)
-        // And the case the raw read has always had: sampleTime briefly negative
-        // right after a host-clock release.
-        #expect(PausedClockSkew.position(raw: 119.9, startOffset: 120, skew: 0) == 120)
-    }
-
-    /// A fresh anchor carries its own offset through the correction.
-    @Test func theOffsetIsPartOfThePositionNotOfTheSkew() {
-        // Cued at 60 s, played 10 s, paused 3 s: raw = 73, song is at 70.
-        #expect(PausedClockSkew.position(raw: 73, startOffset: 60, skew: 3) == 70)
-    }
-
-    /// A monotonic host clock cannot produce these, and neither may they move
-    /// the playhead forward.
-    @Test func negativesAreRefusedRatherThanApplied() {
-        #expect(PausedClockSkew.skew(after: -5, existing: 2) == 2)
-        #expect(PausedClockSkew.skew(after: 3, existing: -2) == 3)
-        #expect(PausedClockSkew.position(raw: 50, startOffset: 0, skew: -10) == 50)
-    }
-
-    @Test func theJournalLineNamesTheDeckAndBothNumbers() {
-        #expect(PausedClockSkew.line(deck: "a", paused: 202.3, total: 202.3)
-            == "resume skew paused=202.3s deck=a total=202.3s")
-        #expect(PausedClockSkew.line(deck: "segment", paused: 1.25, total: 9.75)
-            == "resume skew paused=1.2s deck=segment total=9.8s")
-    }
-
-    /// The stall watchdog's sanity check. Its window is restarted at resume
-    /// (the tick zeroes `watchAt` while paused), so the first comparable window
-    /// after a resume is an ordinary one — and with the skew applied the
-    /// playhead advances with the wall clock rather than jumping. Neither the
-    /// corrected nor the uncorrected reading can be *stalled*: the failure the
-    /// bug produced was a position too far ahead, and a forward jump is never a
-    /// stall.
-    @Test func aResumedDeckIsNotReportedAsStalled() {
-        let skew = PausedClockSkew.skew(after: 202, existing: 0)
-        // Two watchdog windows after the resume, corrected.
-        let first = PausedClockSkew.position(raw: 293, startOffset: 0, skew: skew)
-        let second = PausedClockSkew.position(raw: 295, startOffset: 0, skew: skew)
-        #expect(!PlaybackStallCheck.isStalled(advanced: second - first, over: 2))
-        // And the uncorrected reading, which is what a pause used to leave
-        // behind: a forward jump, never a stall.
-        #expect(!PlaybackStallCheck.isStalled(advanced: 293 - 91, over: 2))
+    /// The echo fade runs inside the drain; the shortest drain must outlast it.
+    @Test func theEchoFadeFitsTheShortestDrain() {
+        #expect(PauseDrain.echoFade < PauseDrain.chainDepth)
     }
 }
 

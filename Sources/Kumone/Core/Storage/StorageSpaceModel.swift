@@ -48,7 +48,7 @@ final class StorageSpaceModel: ObservableObject {
             result.partial = true
             result.unavailableCategories = [.musicCache, .downloads, .appData]
             snapshot = result
-            message = String(localized: "部分存储信息暂时无法读取，请刷新重试")
+            message = String(localized: "部分存储信息不可用")
         }
     }
 
@@ -73,7 +73,7 @@ final class StorageSpaceModel: ObservableObject {
                 message = String(localized: "歌曲缓存已清除")
             default: return
             }
-        } catch { message = String(localized: "缓存清除失败，请稍后重试") }
+        } catch { message = String(localized: "缓存清除失败") }
         await reload(clearMessage: false)
     }
 }

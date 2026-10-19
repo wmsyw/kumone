@@ -5,7 +5,6 @@ struct StorageSpaceView: View {
     let onManageDownloads: () -> Void
     @StateObject private var model = StorageSpaceModel()
     @EnvironmentObject private var settings: SettingsManager
-    @State private var clearing: StorageCategory?
     #if os(iOS)
     @State private var automaticLimitMB: Int?
     #endif
@@ -42,14 +41,11 @@ struct StorageSpaceView: View {
                     Text(model.snapshot.map { format($0.appBytes) } ?? "—")
                         .font(.body.weight(.semibold)).monospacedDigit()
                 }
-                if model.snapshot?.partial == true {
-                    Text("部分存储信息暂时无法读取，请刷新重试").font(.caption).foregroundStyle(.secondary)
-                }
             }
 
             Section {
                 usageRow("图片缓存", icon: "photo.on.rectangle", category: .imageCache)
-                Button(role: .destructive) { clearing = .imageCache } label: {
+                Button(role: .destructive) { Task { await model.clear(.imageCache) } } label: {
                     HStack {
                         Text("清除图片缓存")
                         if model.clearingCategory == .imageCache { Spacer(); ProgressView().controlSize(.small) }
@@ -57,13 +53,16 @@ struct StorageSpaceView: View {
                 }
                     .disabled(busy || (model.snapshot?[.imageCache] ?? 0) == 0)
             } footer: {
-                Text("浏览时保存的临时图片。清除后可重新加载，已下载歌曲的离线封面会保留。")
+                Text("清除后保留已下载歌曲的封面。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Section {
                 usageRow("歌曲缓存", icon: "music.note", category: .musicCache)
                 #if os(macOS)
-                Picker("歌曲缓存上限", selection: $settings.audioCacheLimit) {
+                Picker("上限", selection: $settings.audioCacheLimit) {
                     Text("512 MB").tag(Int64(512) << 20)
                     Text("2 GB").tag(Int64(2) << 30)
                     Text("8 GB").tag(Int64(8) << 30)
@@ -72,7 +71,7 @@ struct StorageSpaceView: View {
                 #else
                 Toggle("歌曲缓存", isOn: $settings.enableAudioCache)
                 if settings.enableAudioCache {
-                    Picker("歌曲缓存上限", selection: cacheLimitSelection) {
+                    Picker("上限", selection: cacheLimitSelection) {
                         if let automaticLimitMB {
                             Text("自动（\(format(Int64(automaticLimitMB) * 1_000_000))）").tag(0)
                         } else {
@@ -84,7 +83,7 @@ struct StorageSpaceView: View {
                     }
                 }
                 #endif
-                Button(role: .destructive) { clearing = .musicCache } label: {
+                Button(role: .destructive) { Task { await model.clear(.musicCache) } } label: {
                     HStack {
                         Text("清除歌曲缓存")
                         if model.clearingCategory == .musicCache { Spacer(); ProgressView().controlSize(.small) }
@@ -92,13 +91,16 @@ struct StorageSpaceView: View {
                 }
                     .disabled(busy || (model.snapshot?[.musicCache] ?? 0) == 0)
             } footer: {
-                Text("最近播放过的歌曲会暂存在本机，断网时也能重播。已下载的歌曲不占用这里的空间。")
+                Text("暂存最近播放的歌曲，不含已下载音乐。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Section {
                 Button(action: onManageDownloads) {
                     HStack {
-                        Label("下载的音乐", systemImage: "arrow.down.circle")
+                        Label("已下载", systemImage: "arrow.down.circle")
                         Spacer()
                         Text(size(.downloads)).foregroundStyle(.secondary).monospacedDigit()
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
@@ -109,17 +111,23 @@ struct StorageSpaceView: View {
                 .buttonStyle(.plain)
             } footer: {
                 if let other = model.snapshot?.otherAccountDownloads, other > 0 {
-                    Text("包含其他账号的 \(format(other)) 下载。管理页显示当前账号的歌曲。")
+                    Text("其他账号的下载占用 \(format(other))。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
             Section {
-                usageRow("应用与其他数据", icon: "internaldrive", category: .appData)
+                usageRow("应用数据", icon: "internaldrive", category: .appData)
             } footer: {
-                Text("包括应用本体、歌词、离线封面、账号资料与运行所需数据。")
+                Text("应用、歌词、离线封面与账号资料。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if let message = model.message {
+            if let message = model.message ?? (model.snapshot?.partial == true ? String(localized: "部分存储信息不可用") : nil) {
                 Section { Text(message).font(.footnote).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
             }
         }
@@ -127,18 +135,9 @@ struct StorageSpaceView: View {
         .navigationTitle("存储空间")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        #else
-        .background(SettingsWindowToolbar())
         #endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { Task { await model.reload() } } label: {
-                    Image(systemName: "arrow.clockwise")
-                }.disabled(busy).accessibilityLabel("刷新存储空间")
-            }
-        }
         .task(id: scenePhase) {
-            if scenePhase == .active, !model.isClearing, clearing == nil {
+            if scenePhase == .active, !model.isClearing {
                 await model.reload()
             }
         }
@@ -156,17 +155,6 @@ struct StorageSpaceView: View {
             await model.reload()
         }
         #endif
-        .alert(clearTitle, isPresented: Binding(get: { clearing != nil }, set: { if !$0 { clearing = nil } }), presenting: clearing) { category in
-            Button("清除", role: .destructive) {
-                Task { await model.clear(category) }
-                clearing = nil
-            }
-            Button("取消", role: .cancel) { clearing = nil }
-        } message: { category in
-            Text(category == .imageCache
-                 ? String(localized: "清除临时图片缓存，保留已下载歌曲的离线封面。")
-                 : String(localized: "清除后，缓存过的歌曲需要联网才能再次播放。已下载的歌曲不受影响。"))
-        }
     }
 
     private var busy: Bool { model.isLoading || model.isClearing }
@@ -189,9 +177,6 @@ struct StorageSpaceView: View {
         return sizes
     }
     #endif
-    private var clearTitle: String {
-        clearing == .imageCache ? String(localized: "清除图片缓存？") : String(localized: "清除歌曲缓存？")
-    }
     private var deviceName: String {
         #if os(macOS)
         return "Mac"

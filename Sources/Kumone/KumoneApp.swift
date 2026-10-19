@@ -148,17 +148,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // App-internal shortcut monitoring (local monitor).
         // Global hotkeys are handled by GlobalHotKeyManager via Carbon Event Hot Key API.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Esc always closes the immersive now-playing page — a built-in
-            // default that isn't a rebindable shortcut (the recorder uses Esc to
-            // clear a binding, so it could never be assigned otherwise). (#125)
-            if event.keyCode == 53,
-               event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
-               PlayerService.shared.showNowPlaying {
-                PlayerService.shared.showNowPlaying = false
-                return nil
-            }
-            return ShortcutManager.shared.handleKeyEvent(event) ? nil : event
+            Self.interceptKeyEvent(event)
         }
+    }
+
+    /// Deliver recording input before playback shortcuts or menu key equivalents consume it.
+    @MainActor
+    static func interceptKeyEvent(_ event: NSEvent) -> NSEvent? {
+        if let recorder = event.window?.firstResponder as? ShortcutRecorderView.RecorderNSView {
+            recorder.keyDown(with: event)
+            return nil
+        }
+        // Outside recording, unmodified Esc closes the immersive playback page.
+        if event.keyCode == 53,
+           event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+           PlayerService.shared.showNowPlaying {
+            PlayerService.shared.showNowPlaying = false
+            return nil
+        }
+        return ShortcutManager.shared.handleKeyEvent(event) ? nil : event
     }
 
     private func applyAppearance(_ scheme: ColorScheme?) {
@@ -195,6 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // The window is on screen again: let the page's animations resume
+            // even if the occlusion observer lags the fronting, and bring the
+            // page itself back.
+            let onScreen = window.isVisible && !window.isMiniaturized
+            MainWindowVisibility.shared.update(isVisible: onScreen, isOnScreen: onScreen)
         } else {
             openMainWindow?()
         }

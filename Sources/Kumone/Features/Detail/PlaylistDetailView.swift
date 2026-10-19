@@ -448,8 +448,6 @@ struct PlaylistDetailView: View {
             .buttonStyle(.pressable)
             .disabled(playable.isEmpty)
 
-            downloadButton(detail)
-
             if isLikedList {
                 Button {
                     startHeartbeat()
@@ -474,6 +472,8 @@ struct PlaylistDetailView: View {
                 }
                 .buttonStyle(.pressable)
             }
+
+            downloadButton(detail)
 
             #if os(macOS)
             Spacer()

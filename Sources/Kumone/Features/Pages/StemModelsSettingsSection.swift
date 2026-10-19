@@ -12,16 +12,11 @@ struct StemModelsSettingsSection: View {
     @ObservedObject private var downloader = StemModelDownloader.shared
 
     var body: some View {
+        // No `.task` here: on a ForEach it would run once per row, hashing
+        // every model once per row. The caller loads the state once.
         ForEach(downloader.specs) { spec in
             row(for: spec)
         }
-        Text("从 GitHub 下载，校验后存放在本机")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .task {
-                downloader.refresh()
-                await downloader.verifyInstalled()
-            }
     }
 
     @ViewBuilder
@@ -30,7 +25,7 @@ struct StemModelsSettingsSection: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(spec.displayName)
-                Text("\(spec.sizeLabel) · \(statusText(spec, state))")
+                Text("\(spec.sizeLabel) · \(statusText(state))")
                     .font(.caption)
                     .foregroundStyle(state.isFailure ? Color.red : Color.secondary)
                 if case .downloading(let progress) = state {
@@ -63,7 +58,7 @@ struct StemModelsSettingsSection: View {
         }
     }
 
-    private func statusText(_ spec: StemModelSpec, _ state: StemModelState) -> String {
+    private func statusText(_ state: StemModelState) -> String {
         switch state {
         case .notInstalled:
             return String(localized: "未下载")

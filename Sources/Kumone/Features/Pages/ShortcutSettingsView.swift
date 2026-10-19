@@ -2,34 +2,54 @@
 import SwiftUI
 import AppKit
 
+private enum ShortcutScope: Hashable {
+    case inApp, global
+}
+
 struct ShortcutSettingsView: View {
-    @ObservedObject var manager = ShortcutManager.shared
-    @State private var selectedTab = 0
+    @ObservedObject private var manager = ShortcutManager.shared
+    @State private var scope = ShortcutScope.inApp
+    @State private var recordingAction: ShortcutAction?
     
     var body: some View {
         VStack(spacing: 0) {
-            Picker("快捷键类型", selection: $selectedTab) {
-                Text("应用快捷键").tag(0)
-                Text("全局快捷键").tag(1)
+            Picker("作用范围", selection: Binding(
+                get: { scope },
+                set: { newScope in
+                    recordingAction = nil
+                    scope = newScope
+                }
+            )) {
+                Text("应用内").tag(ShortcutScope.inApp)
+                Text("全局").tag(ShortcutScope.global)
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
             .padding()
             
             Form {
                 Section {
                     ForEach(ShortcutAction.allCases) { action in
-                        ShortcutRow(action: action, isGlobal: selectedTab == 1)
-                            .id("\(action.rawValue)-\(selectedTab)")
+                        let rowScope = scope
+                        ShortcutRow(action: action, isGlobal: rowScope == .global,
+                                    shortcut: manager.shortcut(for: action, isGlobal: rowScope == .global),
+                                    isRecording: Binding(
+                                        get: { recordingAction == action && scope == rowScope },
+                                        set: { recording in
+                                            // Ignore callbacks from a row removed by a scope or recording change.
+                                            guard scope == rowScope else { return }
+                                            if recording { recordingAction = action }
+                                            else if recordingAction == action { recordingAction = nil }
+                                        }
+                                    ))
                     }
-                } header: {
-                    Text(selectedTab == 0 ? "应用快捷键" : "全局快捷键")
-                } footer: {
-                    Text("点击按键进行录制，按下 Esc 键可清除快捷键。")
                 }
                 
                 Section {
-                    Button("重置为默认") {
-                        manager.resetToDefaults()
+                    Button("恢复默认") {
+                        do {
+                            try manager.resetToDefaults()
+                        } catch { ToastCenter.shared.show(error.localizedDescription) }
                     }
                     .foregroundColor(.red)
                 }
@@ -37,14 +57,15 @@ struct ShortcutSettingsView: View {
             .formStyle(.grouped)
         }
         .navigationTitle("快捷键")
+        .onDisappear { recordingAction = nil }
     }
 }
 
 struct ShortcutRow: View {
     let action: ShortcutAction
     let isGlobal: Bool
-    @ObservedObject var manager = ShortcutManager.shared
-    @State private var isRecording = false
+    let shortcut: UserShortcut
+    @Binding var isRecording: Bool
     @FocusState private var isFocused: Bool
     
     var body: some View {
@@ -55,7 +76,7 @@ struct ShortcutRow: View {
                 isRecording = true
                 isFocused = true
             } label: {
-                Text(isRecording ? String(localized: "请按下按键...") : manager.shortcut(for: action, isGlobal: isGlobal).displayString)
+                Text(isRecording ? String(localized: "录制中…") : shortcut.displayString)
                     .font(.system(.body, design: .monospaced))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -66,15 +87,35 @@ struct ShortcutRow: View {
             }
             .buttonStyle(.plain)
             .focused($isFocused)
-            
+            .help("Delete 清除 · Esc 取消")
+            .accessibilityLabel(Text(action.displayName))
+            .accessibilityValue(Text(isRecording ? String(localized: "录制中…") : shortcut.displayString))
+            .accessibilityHint(Text("Delete 清除 · Esc 取消"))
+            .accessibilityAction(named: Text("清除快捷键"), clearShortcut)
+            .contextMenu {
+                if !isRecording, !shortcut.key.isEmpty {
+                    Button("清除快捷键", action: clearShortcut)
+                }
+            }
+
             if isRecording {
-                ShortcutRecorderView(isRecording: $isRecording) { key, modifiers in
-                    manager.setShortcut(UserShortcut(key: key, modifiers: modifiers), for: action, isGlobal: isGlobal)
+                ShortcutRecorderView(isRecording: $isRecording, onClear: clearShortcut) { key, modifiers in
+                    do {
+                        try ShortcutManager.shared.setShortcut(
+                            UserShortcut(key: key, modifiers: modifiers), for: action, isGlobal: isGlobal)
+                    } catch { ToastCenter.shared.show(error.localizedDescription) }
                 }
                 .frame(width: 0, height: 0)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private func clearShortcut() {
+        do {
+            try ShortcutManager.shared.clearShortcut(for: action, isGlobal: isGlobal)
+            isRecording = false
+        } catch { ToastCenter.shared.show(error.localizedDescription) }
     }
 }
 
@@ -98,15 +139,22 @@ extension ShortcutAction {
 
 struct ShortcutRecorderView: NSViewRepresentable {
     @Binding var isRecording: Bool
+    let onClear: () -> Void
     let onRecord: (String, UserShortcut.ShortcutModifiers) -> Void
     
     func makeNSView(context: Context) -> NSView {
         let view = RecorderNSView()
         view.onRecord = { key, modifiers in
+            guard isRecording else { return }
             onRecord(key, modifiers)
             isRecording = false
         }
         view.onCancel = {
+            isRecording = false
+        }
+        view.onClear = {
+            guard isRecording else { return }
+            onClear()
             isRecording = false
         }
         return view
@@ -115,7 +163,8 @@ struct ShortcutRecorderView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         if isRecording {
             DispatchQueue.main.async {
-                nsView.window?.makeFirstResponder(nsView)
+                guard isRecording, let window = nsView.window, window.firstResponder !== nsView else { return }
+                window.makeFirstResponder(nsView)
             }
         }
     }
@@ -123,17 +172,21 @@ struct ShortcutRecorderView: NSViewRepresentable {
     class RecorderNSView: NSView {
         var onRecord: ((String, UserShortcut.ShortcutModifiers) -> Void)?
         var onCancel: (() -> Void)?
+        var onClear: (() -> Void)?
         
         override var acceptsFirstResponder: Bool { true }
         
         override func keyDown(with event: NSEvent) {
-            // Handle Esc to clear shortcut (set to none)
-            if event.keyCode == 53 { // Esc key
-                onRecord?("", UserShortcut.ShortcutModifiers(rawValue: 0))
+            if event.keyCode == 53 {
+                onCancel?()
                 return
             }
             
             let modifiers = UserShortcut.ShortcutModifiers(nsFlags: event.modifierFlags)
+            if modifiers.isEmpty, event.keyCode == 51 || event.keyCode == 117 {
+                onClear?()
+                return
+            }
             
             // Try to get the key, handling special characters/function keys
             let key = event.charactersIgnoringModifiers ?? ""

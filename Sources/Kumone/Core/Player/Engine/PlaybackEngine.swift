@@ -162,21 +162,8 @@ final class PlaybackEngine: @unchecked Sendable {
         /// Media time (seconds) of player sample 0 for the current schedule;
         /// position = startOffset + playerTime. Reset by every (re)schedule.
         var startOffset: TimeInterval = 0
-        /// Wall seconds this node's timeline counted while the engine was
-        /// paused and it rendered nothing — subtracted from every position
-        /// read. See `PausedClockSkew`: an `AVAudioPlayerNode` resumes its
-        /// *audio* where it left off but its *clock* where the wall clock got
-        /// to, and nothing but this closes the gap. Zeroed wherever a fresh
-        /// anchor is written, because the skew only describes the distance
-        /// between this `startOffset` and a node clock still counting from it.
-        var pauseSkew: TimeInterval = 0
-        /// This deck's anchor was (re)written while the engine was paused — a
-        /// graph rebuild is the path that does it — so the pause still running
-        /// is not this schedule's to pay for. Cleared by the resume that
-        /// forgives it. See `clearPauseSkewLocked`.
-        var anchoredWhilePaused = false
         /// Last position we could compute; the fallback when the node clock
-        /// is unavailable (paused engine, configuration change).
+        /// is unavailable (paused node, configuration change).
         var lastKnownPosition: TimeInterval = 0
         /// Bumped by every stop/seek/reload. Completion handlers capture the
         /// generation they were scheduled under; stale ones are ignored —
@@ -374,10 +361,9 @@ final class PlaybackEngine: @unchecked Sendable {
     private var lastOverloadDumpAt: Double?
     #endif
 
-    /// Host time `pause()` stopped the engine at, cleared by the resume that
-    /// hands the paused seconds to every node still holding its schedule.
-    /// See `applyPauseSkewLocked`.
-    private var pausedAtHostTime: UInt64?
+    /// The second half of a global pause, waiting for the chain to drain;
+    /// cancelled by whatever leaves the pause first. See `pause()`.
+    private var pauseDrain: DispatchWorkItem?
     private var sessionConfigured = false
 
     // Stream backpressure: pause the download when this many ~0.5s buffers
@@ -402,7 +388,7 @@ final class PlaybackEngine: @unchecked Sendable {
     /// old position at full level. Measured on this graph; counted on the
     /// player's own clock rather than wall time, so it survives a pause (a
     /// stopped engine renders nothing, and the stale audio is still in there).
-    private static let faderFlushDuration: TimeInterval = 0.25
+    private static let faderFlushDuration = PauseDrain.chainDepth
     /// Tick of the flush-window watcher; only runs while a window is open.
     private static let faderFlushTick: TimeInterval = 0.01
 
@@ -845,7 +831,10 @@ final class PlaybackEngine: @unchecked Sendable {
     func play(deck: Deck, from seconds: TimeInterval) {
         queue.async {
             let state = self.deckStates[deck]!
-            self.isPaused = false
+            // Every deck the pause held comes back with this one — a pause
+            // mid-crossfade followed by a play on one side must not leave the
+            // other side paused under `isPlaying`.
+            if self.isPaused { self.leavePauseLocked() }
             // This deck is being handed a track to carry. Decks are reused as
             // they are found, so unless a live transition owns its knobs
             // (its ramps rewrite them every tick), start from a transparent
@@ -888,11 +877,43 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
-    /// Global pause: `engine.pause()`, keeping every schedule intact.
+    /// **Global pause**: every sounding node is paused where it stands, the
+    /// engine keeps rendering until the chain behind them has drained, and only
+    /// then — in silence — is anything re-cued or frozen.
+    ///
+    /// Each step answers a measurement (macOS 27.0.1, Apple silicon; ramp-coded
+    /// fixtures through the output tap, so the tap says *which* frame of the
+    /// file is sounding, not just whether something is):
+    ///
+    /// - **Pausing only the engine loses the song.** `engine.pause()` keeps
+    ///   every player node "playing" on the host clock: on `engine.start()` the
+    ///   node's sample time — *and the audio it renders* — jumps ahead by the
+    ///   whole paused wall clock plus ~0.12 s. Three 2 s pauses on this engine
+    ///   left the tap at 8.9 s of the song after 2.4 s of rendered audio. A
+    ///   paused *node*
+    ///   freezes its audio and its clock together. On resume it replays the
+    ///   last ~20 ms before its pause point — always at a silence — and its
+    ///   clock goes back with the audio: reported position against the last
+    ///   frame heard measured +0.4 ms on every one of 15 pauses, and the
+    ///   position/output lead stayed flat (±4 ms read jitter) over 20.
+    /// - **Restarting the engine under a full chain cuts a hole.** `play()`
+    ///   waits for an IO cycle, so the node's audio arrives one render cycle
+    ///   after the engine starts pulling. A chain frozen mid-stream plays its
+    ///   held ~0.1 s first, then that cycle of silence, then the resumed song:
+    ///   a 7–11 ms hole *inside* sound, on every resume — #136. Letting the
+    ///   engine run for `PauseDrain` after the nodes stop drains the chain into
+    ///   the pause instead, so the late cycle lands on silence and is just a
+    ///   pause 10 ms longer.
+    /// - **Two nodes cannot be resumed together.** Sequential `play()` calls
+    ///   land on consecutive IO cycles (10.7 ms apart, every resume, measured
+    ///   on two decks), and `play(at:)` on a paused node does not resume it in
+    ///   place. So a live overlap is finished at the end of the drain rather
+    ///   than paused across; see `finishPauseLocked`.
     func pause() {
         queue.async {
             guard !self.isPaused else { return }
-            // Snapshot positions first — the node clocks freeze with the engine.
+            // Snapshot positions first — a paused node has no render time to
+            // read a position from until it is started again.
             for state in self.deckStates.values where state.isPlaying {
                 state.lastKnownPosition = self.livePositionLocked(state)
                 state.player.pause()
@@ -904,102 +925,150 @@ final class PlaybackEngine: @unchecked Sendable {
             self.disarmGaplessLocked()
             // A pre-rendered segment is armed on the same host clock, and the
             // incoming deck's hand-back inside one is too. Both are undone
-            // here and re-armed by the tick after playback resumes; a segment
-            // that is already sounding needs nothing, because it freezes with
-            // the engine exactly like the decks do. If it is already sounding,
-            // pause its clock too.
+            // here and re-armed by the tick after playback resumes. A segment
+            // that is already sounding is the third chain, and is paused like
+            // the decks are: its clock is what the splice's tick runs on.
             self.disarmSegmentLocked()
             self.disarmSegmentTailLocked()
             if self.transition?.phase == .segmentPlaying {
                 self.segmentState.player.pause()
             }
-            // An echo tail cannot decay while the engine is stopped, and a
-            // frozen wet delay would blare back on resume — end it now.
-            if let tr = self.transition, tr.phase == .settling, tr.echoTailRinging {
-                tr.echoTailRinging = false
-                self.silenceDeckLocked(self.deckStates[tr.from]!)
-            }
-            // A gain ride cannot glide while nothing renders, and resuming
-            // into a half-released one would just make the drift longer than
-            // it was designed to be. Settle it while the engine is silent —
-            // a ride still inside its overlap is at its target already, so a
-            // pause mid-crossfade moves nothing.
-            for state in self.deckStates.values { self.settleRideLocked(state) }
             self.isPaused = true
-            self.engine.pause()
-            // After the pause, not before: the wall clock that has to be
-            // discounted is the one the *stopped* engine spends, and taking
-            // the stamp on the far side of the call cannot over-count it.
-            self.pausedAtHostTime = mach_absolute_time()
+            let drain = DispatchWorkItem { [weak self] in self?.finishPauseLocked() }
+            self.pauseDrain = drain
+            self.fadeEchoTailLocked(during: drain)
+            self.queue.asyncAfter(deadline: .now() + self.pauseDrainDurationLocked(),
+                                  execute: drain)
         }
+    }
+
+    /// A thrown echo keeps regenerating out of the delay line after its
+    /// player is paused — the fader sits *before* the delay, so it cannot
+    /// reach the tail — and would still be ringing at about −15 dB when the
+    /// drain ends and `finishPauseLocked` cuts it. Fade the wet signal out
+    /// over the first part of the drain instead. The transition tick does not
+    /// run while paused, so nothing fights these writes; a resume inside the
+    /// drain stops them, and the next overlap or settle tick puts the delay
+    /// back where its curve says.
+    private func fadeEchoTailLocked(during drain: DispatchWorkItem) {
+        guard let tr = transition, tr.echoTailRinging else { return }
+        let delay = deckStates[tr.from]!.delay
+        let wet = delay.wetDryMix
+        delay.feedback = 0
+        let steps = 8
+        for step in 1...steps {
+            let remaining = Float(steps - step) / Float(steps)
+            queue.asyncAfter(deadline: .now() + PauseDrain.echoFade * Double(step) / Double(steps)) {
+                [weak self] in
+                guard self?.pauseDrain === drain else { return }
+                delay.wetDryMix = wet * remaining
+            }
+        }
+    }
+
+    /// The second half of `pause()`, run once the chain has played out what
+    /// the nodes had already handed it — so every step here happens while the
+    /// output is silent, which is the whole reason they wait for it.
+    private func finishPauseLocked() {
+        pauseDrain = nil
+        guard isPaused else { return }
+        // A live overlap is not resumed as two decks: `play()` waits for an IO
+        // cycle, so restarting two nodes lands the second a render cycle after
+        // the first, and a beat-matched pair would come back flammed. The
+        // hand-over is completed instead, here in the silence, and the resume
+        // continues the incoming track alone.
+        if let tr = transition, tr.phase == .overlapping {
+            finishOverlapLocked(tr)
+        }
+        // An echo tail cannot decay while the engine is stopped, and a frozen
+        // wet delay would blare back on resume — end it now that it is
+        // inaudible. `silenceDeckLocked` neutralizes the delay and resets its
+        // line, so nothing is left in it to come back.
+        if let tr = transition, tr.phase == .settling, tr.echoTailRinging {
+            tr.echoTailRinging = false
+            silenceDeckLocked(deckStates[tr.from]!)
+        }
+        // A gain ride cannot glide while nothing renders, and resuming into a
+        // half-released one would just make the drift longer than it was
+        // designed to be. A ride still inside its overlap is at its target
+        // already, so a pause mid-crossfade moves nothing. (A resume inside
+        // the drain skips this: the ride simply carries on gliding.)
+        for state in deckStates.values { settleRideLocked(state) }
+        if engine.isRunning { engine.pause() }
+    }
+
+    /// How long the engine keeps rendering after the nodes are paused: the
+    /// chain's own latency, what the output still has to present, and a
+    /// couple of IO cycles. See `PauseDrain`.
+    private func pauseDrainDurationLocked() -> TimeInterval {
+        let chain = deckStates.values.map {
+            $0.timePitch.latency + $0.eq.latency + $0.delay.latency
+        }.max() ?? 0
+        let master = engine.mainMixerNode.latency + masterLimiter.latency + masterMixer.latency
+        return PauseDrain.duration(chainLatency: chain + master,
+                                   presentationLatency: engine.outputNode.presentationLatency,
+                                   ioBuffer: ioBufferDurationLocked())
+    }
+
+    /// One IO cycle of the output device, in seconds; 0 when it cannot be read.
+    private func ioBufferDurationLocked() -> TimeInterval {
+        #if os(macOS)
+        guard let unit = engine.outputNode.audioUnit else { return 0 }
+        var frames: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioUnitGetProperty(unit, kAudioDevicePropertyBufferFrameSize,
+                                          kAudioUnitScope_Global, 0, &frames, &size)
+        let rate = engine.outputNode.outputFormat(forBus: 0).sampleRate
+        guard status == noErr, rate > 0 else { return 0 }
+        return Double(frames) / rate
+        #else
+        return AVAudioSession.sharedInstance().ioBufferDuration
+        #endif
     }
 
     func resume() {
         queue.async {
             guard self.isPaused else { return }
-            self.isPaused = false
-            // Clear the skew because we paused the nodes explicitly.
-            for state in self.deckStates.values { state.pauseSkew = 0 }
-            self.segmentState.pauseSkew = 0
-
-            self.ensureEngineRunningLocked()
-            for state in self.deckStates.values where state.isPlaying {
-                _ = KumoneCatchException({ state.player.play() })
-            }
-            if self.transition?.phase == .segmentPlaying {
-                _ = KumoneCatchException({ self.segmentState.player.play() })
-            }
+            self.leavePauseLocked()
         }
     }
 
-    /// **Hand the paused wall clock to every node that kept its schedule.**
+    /// **The one way out of a global pause** — `resume()` and a `play` that
+    /// lands while paused both come through here, so neither can leave a deck
+    /// the pause held still paused under `isPlaying`.
     ///
-    /// A paused `AVAudioPlayerNode` resumes its audio exactly where it left off
-    /// and its *clock* wherever the wall clock got to — see `PausedClockSkew`
-    /// for the measurement and the field incident. So every deck whose player
-    /// still holds the schedule it had before the pause owes that many seconds
-    /// back, and the ones that do not are precisely the ones a fresh anchor is
-    /// about to be written for (`disarmGaplessLocked` has already stopped the
-    /// armed hand-over; `startNodeIfNeededLocked` cannot resurrect a node that
-    /// was re-cued without going through a site that zeroes the skew).
-    ///
-    /// The segment player is the third chain and needs the same treatment, but
-    /// only while it is *sounding*: an armed-but-unreleased segment was taken
-    /// off the clock by `disarmSegmentLocked` on the way into the pause.
-    ///
-    /// Runs before `ensureEngineRunningLocked`, so no position read can land
-    /// between the engine restarting and the correction being in place.
-    private func applyPauseSkewLocked() {
-        guard let pausedAt = pausedAtHostTime else { return }
-        pausedAtHostTime = nil
-        let paused = AVAudioTime.seconds(forHostTime: mach_absolute_time() &- pausedAt)
-        for (deck, state) in deckStates {
-            defer { state.anchoredWhilePaused = false }
-            guard state.isPlaying, !state.anchoredWhilePaused, paused > 0 else { continue }
-            state.pauseSkew = PausedClockSkew.skew(after: paused, existing: state.pauseSkew)
-            PlaybackJournal.note(PausedClockSkew.line(
-                deck: deck.rawValue, paused: paused, total: state.pauseSkew))
+    /// The pause is only over once the engine is running: if it cannot be
+    /// started (the device is busy or gone) everything stays paused — the
+    /// failure is already reported per deck by `ensureEngineRunningLocked` —
+    /// and the next resume tries again instead of finding nothing to do.
+    private func leavePauseLocked() {
+        pauseDrain?.cancel()
+        pauseDrain = nil
+        ensureEngineRunningLocked()
+        guard engine.isRunning else {
+            PlaybackJournal.note("resume deferred: engine did not start")
+            return
         }
-        let segmentSounding = transition?.phase == .segmentPlaying
-        if segmentSounding, !segmentState.anchoredWhilePaused, paused > 0 {
-            segmentState.pauseSkew = PausedClockSkew.skew(
-                after: paused, existing: segmentState.pauseSkew)
-            PlaybackJournal.note(PausedClockSkew.line(
-                deck: "segment", paused: paused, total: segmentState.pauseSkew))
+        isPaused = false
+        // `startNodeIfNeededLocked`, not a bare `play()`: the engine may have
+        // only just restarted, which is the window where `play()` raises "did
+        // not see an IO cycle" and has to be retried.
+        for state in deckStates.values where state.isPlaying {
+            startNodeIfNeededLocked(state)
         }
-        segmentState.anchoredWhilePaused = false
+        startSegmentNodeIfNeededLocked()
     }
 
-    /// A fresh anchor: the node clock this deck's position is derived from
-    /// starts counting from here, so whatever it counted through earlier pauses
-    /// is no longer part of the sum. Every `startOffset` write goes through
-    /// this, which is what keeps the two in step.
-    private func clearPauseSkewLocked(_ state: DeckState) {
-        state.pauseSkew = 0
-        // Written *during* a pause (the graph rebuild re-cues every deck from
-        // its cached position, paused or not): the pause still running belongs
-        // to the schedule this one replaced, not to this one.
-        state.anchoredWhilePaused = isPaused
+    /// The segment player's counterpart of `startNodeIfNeededLocked`. Only a
+    /// sounding segment is ever resumed — an armed one was taken off the
+    /// clock by the pause and is re-armed by the splice tick.
+    private func startSegmentNodeIfNeededLocked(attempt: Int = 0) {
+        guard !isPaused, engine.isRunning, transition?.phase == .segmentPlaying,
+              !segmentState.player.isPlaying else { return }
+        playRetryingLocked(segmentState.player, attempt: attempt,
+                           failure: "segment resume failed") {
+            [weak self] next in self?.startSegmentNodeIfNeededLocked(attempt: next)
+        }
     }
 
     /// File decks seek sample-accurately. Stream decks restart the transfer
@@ -1956,20 +2025,28 @@ final class PlaybackEngine: @unchecked Sendable {
         guard state.isPlaying, !isPaused, state.isConnected, engine.isRunning else { return }
         guard !state.player.isPlaying else { return }
         trace.record(.play, state.traceDeck, .play, state.lastKnownPosition)
-        // `play()` can raise "player did not see an IO cycle" — an NSException,
-        // so uncaught a crash — in a window after the engine (re)starts that no
-        // public property reveals: `isRunning` and every render time already
-        // read valid (seen on CI with two engines starting at once; the same
-        // window follows a restart after a device switch). Catch it and try
-        // again shortly; every guard above is re-checked on retry.
-        guard let exception = KumoneCatchException({ state.player.play() }) else { return }
+        playRetryingLocked(state.player, attempt: attempt,
+                           failure: "deck start failed deck=\(journalDeckName(state))") {
+            [weak self] next in self?.startNodeIfNeededLocked(state, attempt: next)
+        }
+    }
+
+    /// `play()` can raise "player did not see an IO cycle" — an NSException,
+    /// so uncaught a crash — in a window after the engine (re)starts that no
+    /// public property reveals: `isRunning` and every render time already
+    /// read valid (seen on CI with two engines starting at once; the same
+    /// window follows a restart after a device switch, and every resume from
+    /// a pause). Catch it and try again shortly through `retry`, which is the
+    /// caller itself, so every one of its guards is re-checked.
+    private func playRetryingLocked(_ player: AVAudioPlayerNode, attempt: Int,
+                                    failure: @autoclosure () -> String,
+                                    retry: @escaping (Int) -> Void) {
+        guard let exception = KumoneCatchException({ player.play() }) else { return }
         if attempt < Self.playRetries {
-            queue.asyncAfter(deadline: .now() + Self.playRetryInterval) { [weak self] in
-                self?.startNodeIfNeededLocked(state, attempt: attempt + 1)
-            }
+            queue.asyncAfter(deadline: .now() + Self.playRetryInterval) { retry(attempt + 1) }
         } else {
-            PlaybackJournal.note("deck start failed deck=\(journalDeckName(state)) "
-                + "after \(attempt + 1) tries: \(exception.reason ?? exception.name.rawValue)")
+            PlaybackJournal.note("\(failure()) after \(attempt + 1) tries: "
+                + (exception.reason ?? exception.name.rawValue))
         }
     }
     private static let playRetries = 40
@@ -3565,7 +3642,8 @@ final class PlaybackEngine: @unchecked Sendable {
     ///
     /// Called on pause, seek and any re-`play` — the three moments the user
     /// interrupts the deck. Each is inaudible by construction, which is why a
-    /// jump of up to 4 dB is acceptable here: a paused engine renders nothing,
+    /// jump of up to 4 dB is acceptable here: a paused deck renders nothing
+    /// (the pause settles it only once its chain has drained),
     /// and a seek or re-play mutes the deck through `beginFaderFlushLocked`
     /// while the chain drains and hands back the *new* level afterwards. What
     /// would not be acceptable is the alternative — a glide left running under
@@ -3789,7 +3867,6 @@ final class PlaybackEngine: @unchecked Sendable {
         state.hostScheduledStart = false
         state.scheduledStartHostTime = nil
         state.startOffset = 0
-        clearPauseSkewLocked(state)
         state.lastKnownPosition = 0
         state.pendingStreamBuffers = 0
         state.streamStalled = false
@@ -3821,21 +3898,18 @@ final class PlaybackEngine: @unchecked Sendable {
 
     /// Sample-accurate position: schedule-start offset + frames the node has
     /// actually rendered. Falls back to the cached value when the node clock
-    /// is unavailable (engine paused/stopped).
+    /// is unavailable (node paused, engine stopped).
     private func livePositionLocked(_ state: DeckState) -> TimeInterval {
         guard let nodeTime = Self.renderedNodeTime(state.player),
               let playerTime = state.player.playerTime(forNodeTime: nodeTime),
               playerTime.sampleRate > 0 else {
             return state.lastKnownPosition
         }
-        let raw = state.startOffset + Double(playerTime.sampleTime) / playerTime.sampleRate
-        // The node's timeline kept counting through every global pause this
-        // schedule survived; the song did not. See `PausedClockSkew`.
-        let position = PausedClockSkew.position(raw: raw, startOffset: state.startOffset,
-                                                skew: state.pauseSkew)
+        // A global pause pauses the node, which freezes this clock with the
+        // audio — no correction owed for the time spent paused. See `pause()`.
+        let position = state.startOffset + Double(playerTime.sampleTime) / playerTime.sampleRate
         guard position > state.startOffset else {
-            // sampleTime can be briefly negative right after play(at:), and a
-            // skew never walks the playhead behind where the deck was cued.
+            // sampleTime can be briefly negative right after play(at:).
             return state.startOffset
         }
         state.lastKnownPosition = position
@@ -3928,7 +4002,6 @@ final class PlaybackEngine: @unchecked Sendable {
         let sampleRate = file.processingFormat.sampleRate
         let startFrame = AVAudioFramePosition((max(0, seconds) * sampleRate).rounded())
         state.startOffset = Double(startFrame) / sampleRate
-        clearPauseSkewLocked(state)
         state.lastKnownPosition = state.startOffset
         let remaining = file.length - startFrame
         guard remaining > 0 else {
@@ -4031,7 +4104,6 @@ final class PlaybackEngine: @unchecked Sendable {
         state.streamStalled = false
         state.feederStarved = false
         state.startOffset = seconds
-        clearPauseSkewLocked(state)
         state.lastKnownPosition = seconds
         feeder.start(from: seconds)
     }
@@ -4049,7 +4121,6 @@ final class PlaybackEngine: @unchecked Sendable {
         state.pendingStreamBuffers = 0
         state.streamEnded = false
         state.startOffset = seconds
-        clearPauseSkewLocked(state)
         state.lastKnownPosition = seconds
         if !state.streamStalled {
             // Buffering until the range request lands.
@@ -4398,9 +4469,12 @@ final class PlaybackEngine: @unchecked Sendable {
         to.generation += 1
         to.player.stop()
         to.isPlaying = false
+        // The release this deck was waiting for is gone with the stop; a flag
+        // left behind would make `startNodeIfNeededLocked` refuse the deck.
+        to.hostScheduledStart = false
+        to.startCheck = nil
         to.scheduledStartHostTime = nil
         to.startOffset = 0
-        clearPauseSkewLocked(to)
         to.lastKnownPosition = 0
         tr.phase = .waiting
     }
@@ -4515,11 +4589,9 @@ final class PlaybackEngine: @unchecked Sendable {
         guard let nodeTime = Self.renderedNodeTime(segmentState.player),
               let playerTime = segmentState.player.playerTime(forNodeTime: nodeTime),
               playerTime.sampleRate > 0, playerTime.sampleTime >= 0 else { return nil }
-        // Same correction as `livePositionLocked`: a segment that was sounding
-        // when the engine paused freezes with it, and its node clock does not.
-        return PausedClockSkew.position(
-            raw: Double(playerTime.sampleTime) / playerTime.sampleRate,
-            startOffset: 0, skew: segmentState.pauseSkew)
+        // A segment sounding at a global pause is paused with the decks, so
+        // its clock froze with its audio, the same as theirs. See `pause()`.
+        return Double(playerTime.sampleTime) / playerTime.sampleRate
     }
 
     /// Put the segment on the render clock so its first sample lands exactly
@@ -4571,7 +4643,6 @@ final class PlaybackEngine: @unchecked Sendable {
 
         ensureEngineRunningLocked()
         segmentState.generation += 1
-        clearPauseSkewLocked(segmentState)
         trace.record(.stop, .segment, .spliceArm, 0, 0)
         segmentState.player.stop()
         trace.record(.scheduleBuffer, .segment, .spliceArm,
@@ -4808,7 +4879,6 @@ final class PlaybackEngine: @unchecked Sendable {
         state.streamStalled = false
         state.feederStarved = false
         state.startOffset = seconds
-        clearPauseSkewLocked(state)
         state.lastKnownPosition = seconds
         state.hostScheduledStart = true
         returnToServiceLocked(state)
@@ -5564,6 +5634,10 @@ final class PlaybackEngine: @unchecked Sendable {
                 startNodeIfNeededLocked(state)
             }
         }
+        // A rebuild during a pause had to start the engine to re-cue the
+        // decks; nothing is playing into it, so put it back to sleep — unless
+        // the pause's own drain is still pending and will do so itself.
+        if isPaused, pauseDrain == nil, engine.isRunning { engine.pause() }
     }
 }
 #endif

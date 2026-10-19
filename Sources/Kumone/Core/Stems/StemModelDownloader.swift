@@ -46,7 +46,7 @@ struct StemModelSpec: Identifiable, Sendable, Equatable {
     /// Mel-Band RoFormer vocals v1. The one every stem gesture needs.
     static let vocals = StemModelSpec(
         fileName: "mel_roformer_vocals.safetensors",
-        displayName: String(localized: "两轨模型（人声）"),
+        displayName: String(localized: "人声分离模型"),
         sha256: "ef4aa052845a868cfaff93611477bd8f54d8081bc32f2742a9b3c738f0821191",
         byteCount: 67_402_202)
 
@@ -54,7 +54,7 @@ struct StemModelSpec: Identifiable, Sendable, Equatable {
     /// their two-lane form, which is a supported state everywhere downstream.
     static let fourStem = StemModelSpec(
         fileName: "bs_roformer_4stem.safetensors",
-        displayName: String(localized: "四轨模型（人声 / 鼓 / 贝斯 / 其他）"),
+        displayName: String(localized: "人声与乐器分离模型"),
         sha256: "bc21feafc525b7431d9ad1006c4030b6ea953d0af05b0b5da4ba961eb41da141",
         byteCount: 263_558_304)
 
