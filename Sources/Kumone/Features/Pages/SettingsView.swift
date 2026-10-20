@@ -166,11 +166,16 @@ struct SettingsView: View {
             }
             #endif
 
+            SyncSettingsSection()
+
             Section("账号") {
                 if let profile = account.profile {
                     LabeledContent("当前账号", value: profile.nickname)
                     Button("退出登录", role: .destructive) {
-                        Task { await AccountStore.shared.logout() }
+                        Task {
+                            do { try await AccountStore.shared.logout() }
+                            catch { ToastCenter.shared.show(error.localizedDescription) }
+                        }
                     }
                 } else {
                     Text("未登录")

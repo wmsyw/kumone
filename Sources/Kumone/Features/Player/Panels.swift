@@ -162,6 +162,8 @@ struct QueuePanel: View {
             if let current = player.currentTrack {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 2) {
+                        PlaybackHandoffList()
+                            .padding(.bottom, 6)
                         sectionLabel("正在播放")
                         QueueRow(track: current, isCurrent: true)
 
@@ -177,8 +179,14 @@ struct QueuePanel: View {
                     .padding(10)
                 }
             } else {
-                EmptyStateView(icon: "list.bullet", title: "播放队列是空的",
-                               subtitle: "播放一些音乐吧")
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        PlaybackHandoffList()
+                        EmptyStateView(icon: "list.bullet", title: "播放队列是空的",
+                                       subtitle: "播放一些音乐吧")
+                    }
+                    .padding(10)
+                }
             }
         }
         .frame(width: 340)

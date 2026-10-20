@@ -492,3 +492,33 @@
 "无法加载歌单，请重试" = "Unable to load the playlist. Please try again.";
 "无法读取下载记录，请重试" = "Unable to read download records. Please try again.";
 "其他歌单中的相同歌曲也会移除下载。" = "Downloads of the same songs in other playlists will also be removed.";
+
+/* Cross-device sync */
+"同步" = "Sync";
+"在设备间接续播放，同步设置" = "Continue playback and sync settings across devices.";
+"登录同步" = "Sync Sign-in";
+"重新连接" = "Reconnect";
+"以%@登录" = "Sign in as %@";
+"在已连接的设备间同步登录状态" = "Sync sign-in across connected devices.";
+"允许已连接的设备登录此账号，登录信息以同步密码加密" = "Allow connected devices to sign in to this account. Sign-in details are encrypted with your sync password.";
+"设置同步密码" = "Set Sync Password";
+"输入同步密码" = "Enter Sync Password";
+"重设同步密码" = "Reset Sync Password";
+"更改同步密码" = "Change Sync Password";
+"同步密码" = "Sync Password";
+"再次输入" = "Confirm";
+"保存" = "Save";
+"解锁" = "Unlock";
+"登录信息会用此密码加密。其他设备需输入同一密码才能登录。" = "Sign-in details are encrypted with this password. Other devices need the same password to sign in.";
+"输入在其他设备上设置的同步密码。" = "Enter the sync password you set on another device.";
+"需要输入同步密码" = "Sync password required";
+"同步密码不正确" = "Incorrect sync password";
+"同步密码至少需要 8 个字符" = "The sync password must be at least 8 characters";
+"两次输入的同步密码不一致" = "The sync passwords don't match";
+"接续" = "Continue";
+"同步目录不可用" = "Sync folder unavailable";
+"等待 iCloud 下载" = "Waiting for iCloud download";
+"同步数据损坏" = "Sync data is damaged";
+"同步数据需要更新版本的 Kumone" = "Sync data requires a newer version of Kumone";
+"接续需要登录同一网易云账号" = "Sign in to the same NetEase account to continue playback";
+"iCloud 账号已更改" = "iCloud account changed";

@@ -22,7 +22,7 @@ enum RepeatMode: String, CaseIterable {
 }
 
 /// Where the current queue came from — used for scrobbling and UI affordances.
-enum PlaySource: Equatable {
+enum PlaySource: Codable, Equatable {
     case playlist(Int)
     case album(Int)
     case artist(Int)
@@ -135,6 +135,7 @@ final class PlayerService: ObservableObject {
     @Published private(set) var playNextList: [Track] = []
     @Published private(set) var currentIndex = -1
     @Published private(set) var currentTrack: Track?
+    private var playbackAccountID: Int?
     @Published private(set) var source: PlaySource = .none
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
@@ -211,6 +212,7 @@ final class PlayerService: ObservableObject {
     private var currentCacheKey: EngineAudioCache.Key?
     private var currentRemoteURL: URL?
     private var progressTimer: Timer?
+    private var lastPlaybackCheckpoint = ContinuousClock.now
 
     /// Live playback position straight off the deck, for smooth per-frame
     /// karaoke highlighting (the published `progress` is intentionally coarse —
@@ -389,6 +391,9 @@ final class PlayerService: ObservableObject {
                     self.progress = seconds
                     NowPlayingManager.shared.updateElapsed(seconds, rate: 1)
                 }
+                if self.lastPlaybackCheckpoint.duration(to: .now) >= .seconds(20) {
+                    self.persistState()
+                }
                 self.updateStemPrerender()
             }
         }
@@ -475,13 +480,11 @@ final class PlayerService: ObservableObject {
     func togglePlayPause() {
         guard let track = currentTrack else { return }
         if isPlaying {
-            engine.pause()
-            enginePaused = true
-            isPlaying = false
-            AudioSpectrum.shared.reset()
+            pause()
+            return
         } else if !deckLoaded {
             // Restored session: re-resolve the source.
-            startPlaying(track, indexUnchanged: true)
+            startPlaying(track, resumeAt: progress)
             return
         } else if enginePaused {
             engine.resume()
@@ -503,6 +506,7 @@ final class PlayerService: ObservableObject {
         isPlaying = false
         AudioSpectrum.shared.reset()
         NowPlayingManager.shared.updateElapsed(progress, rate: 0)
+        persistState()
     }
 
     func next() {
@@ -593,6 +597,7 @@ final class PlayerService: ObservableObject {
             armTransitionIfReady()
             reconcileParkedPrerender()
         }
+        persistState()
         completion?()
     }
 
@@ -677,7 +682,7 @@ final class PlayerService: ObservableObject {
     func jumpTo(_ track: Track) {
         if let nextIdx = playNextList.firstIndex(where: { $0.id == track.id }) {
             playNextList.removeSubrange(0...nextIdx)
-            startPlaying(track, indexUnchanged: true)
+            startPlaying(track)
             return
         }
         if let idx = activeQueue.firstIndex(where: { $0.id == track.id }) {
@@ -710,17 +715,15 @@ final class PlayerService: ObservableObject {
     /// the listener clicked rather than its first occurrence.
     func jumpToUpcoming(at index: Int, matching trackID: Int) {
         guard let selected = upcomingCandidate(at: index, matching: trackID) else { return }
-        var indexUnchanged = false
         switch selected.origin {
         case .inserted(let offset):
             playNextList.removeSubrange(0...offset)
-            indexUnchanged = true
         case .queue(let offset):
             if !playNextList.isEmpty { playNextList.removeAll() }
             currentIndex = offset
         case .fm: return
         }
-        startPlaying(selected.track, indexUnchanged: indexUnchanged)
+        startPlaying(selected.track)
     }
 
     /// Removes the row itself: a repeated song leaves the occurrence the
@@ -810,7 +813,7 @@ final class PlayerService: ObservableObject {
         guard !fmUpcoming.isEmpty else { return }
         let track = fmUpcoming.removeFirst()
         pendingAutoAdvance = true
-        startPlaying(track, indexUnchanged: true)
+        startPlaying(track)
         if fmUpcoming.count < 1 {
             if let more = try? await NeteaseAPI.personalFM() {
                 fmUpcoming.append(contentsOf: more)
@@ -833,7 +836,7 @@ final class PlayerService: ObservableObject {
         if !playNextList.isEmpty {
             let track = playNextList.removeFirst()
             pendingAutoAdvance = !userInitiated
-            startPlaying(track, indexUnchanged: true)
+            startPlaying(track)
             return
         }
         guard !activeQueue.isEmpty else { return }
@@ -885,7 +888,7 @@ final class PlayerService: ObservableObject {
             } else if let track = currentTrack {
                 // A drained stream can't restart in place; re-resolve (the
                 // second pass usually hits the cache the first one committed).
-                startPlaying(track, indexUnchanged: true)
+                startPlaying(track)
             }
             return
         }
@@ -924,8 +927,8 @@ final class PlayerService: ObservableObject {
         stemPrerenderStable = nil
     }
 
-    private func startPlaying(_ track: Track, indexUnchanged: Bool = false,
-                              localLease: OfflinePlaybackLease? = nil) {
+    private func startPlaying(_ track: Track,
+                              localLease: OfflinePlaybackLease? = nil, resumeAt: TimeInterval = 0) {
         offlineScan?.cancel()
         offlineScan = nil
         offlineScanID = UUID()
@@ -968,7 +971,8 @@ final class PlayerService: ObservableObject {
 
         scrobbleIfNeeded(completed: false)
         currentTrack = track
-        progress = 0
+        playbackAccountID = AccountStore.shared.profile?.userId
+        progress = resumeAt
         duration = track.duration
         servedQuality = nil
         unblockSource = nil
@@ -990,7 +994,7 @@ final class PlayerService: ObservableObject {
         persistState()
 
         Task {
-            await resolveAndLoad(track, generation: generation, localLease: localLease)
+            await resolveAndLoad(track, generation: generation, localLease: localLease, resumeAt: resumeAt)
         }
         Task {
             await loadLyrics(for: track, generation: generation)
@@ -1050,10 +1054,10 @@ final class PlayerService: ObservableObject {
     }
 
     private func resolveAndLoad(_ track: Track, generation: Int,
-                                localLease: OfflinePlaybackLease? = nil) async {
+                                localLease: OfflinePlaybackLease? = nil, resumeAt: TimeInterval = 0) async {
         // A downloaded copy beats the network, and is all there is without one.
         if let lease = await acquireOfflineLease(for: track, generation: generation, reusing: localLease) {
-            playLocalFile(lease.url, lease: lease, for: track, generation: generation)
+            playLocalFile(lease.url, lease: lease, for: track, generation: generation, from: resumeAt)
             return
         }
         guard generation == resolveGeneration else { return }
@@ -1061,7 +1065,7 @@ final class PlayerService: ObservableObject {
             // Without a network, the cache is the last place to look.
             if let cached = await EngineAudioCache.shared.cachedFileURL(trackID: track.id) {
                 guard generation == resolveGeneration else { return }
-                playLocalFile(cached, lease: nil, for: track, generation: generation)
+                playLocalFile(cached, lease: nil, for: track, generation: generation, from: resumeAt)
                 return
             }
             guard generation == resolveGeneration else { return }
@@ -1111,6 +1115,26 @@ final class PlayerService: ObservableObject {
         let key = resolved.key
         currentCacheKey = resolved.isTrial ? nil : key
         currentRemoteURL = resolved.url
+
+        // Progressive streams cannot seek before their bytes arrive. A received
+        // checkpoint therefore loads a complete file through the existing cache.
+        if resumeAt > 0, !resolved.isTrial {
+            isBuffering = true
+            do {
+                let local = try await EngineAudioCache.shared.download(from: resolved.url, key: key)
+                guard generation == resolveGeneration else { return }
+                playLocalFile(local, lease: nil, for: track, generation: generation, from: resumeAt)
+                servedQuality = resolved.level
+                return
+            } catch {
+                guard generation == resolveGeneration else { return }
+                isBuffering = false
+                isPlaying = false
+                engine.stop(deck: activeDeck)
+                ToastCenter.shared.show(error.localizedDescription)
+                return
+            }
+        }
 
         engine.stop(deck: activeDeck)
         deckFiles[activeDeck] = nil
@@ -3114,7 +3138,8 @@ final class PlayerService: ObservableObject {
     // MARK: - Shuffle helpers
 
     private func reshuffle(keeping first: Track) {
-        var rest = queue.filter { $0.id != first.id }
+        var rest = queue
+        if let index = rest.firstIndex(where: { $0.id == first.id }) { rest.remove(at: index) }
         rest.shuffle()
         shuffledQueue = [first] + rest
     }
@@ -3158,7 +3183,7 @@ final class PlayerService: ObservableObject {
     /// pick waits this long. A pick that satisfies, exhausts the queue or spends
     /// its download budget commits as soon as it does, which on a warm pool is
     /// within seconds of the track starting.
-    private static let autoMixDecisionLead: TimeInterval = 120
+    nonisolated private static let autoMixDecisionLead: TimeInterval = 120
 
     /// The fraction floor, so a short track does not decide before it has
     /// played at all.
@@ -3665,49 +3690,86 @@ final class PlayerService: ObservableObject {
         }
     }
 
-    struct PersistedState: Codable {
-        var queue: [Track]
-        var currentID: Int?
-        var repeatMode: String
-        /// The pre-`QueueOrder` two-state flag. Still written, so a build
-        /// without the queue-order mode reads a sane session back; still read,
-        /// as the migration source for a state file written before
-        /// `queueOrder` existed.
-        var shuffle: Bool
-        /// Optional so state files written before recents existed still decode.
-        var recentContexts: [PlayContext]?
-        /// Optional for the same reason — absent means "migrate from
-        /// `shuffle`". See `QueueOrder.init(migratingShuffle:)`.
-        var queueOrder: String?
+    var playbackSession: PlaybackSession? {
+        guard let currentTrack else { return nil }
+        return PlaybackSession(accountID: playbackAccountID, queue: queue, orderedQueue: activeQueue,
+                               currentIndex: currentIndex, currentTrack: currentTrack, playNext: playNextList,
+                               source: source, repeatMode: repeatMode.rawValue, shuffled: shuffleEnabled,
+                               automaticOrder: queueOrder == .autoMix, isFM: isFMMode, progress: progress)
+    }
+
+    func resume(_ session: PlaybackSession) throws {
+        let accountID = AccountStore.shared.authenticatedAccountID
+        try session.validateAccess(accountID: accountID)
+        scrobbleIfNeeded(completed: false)
+        pause()
+        applyPlaybackSession(session)
+        startPlaying(session.currentTrack, resumeAt: session.progress)
+    }
+
+    private func applyPlaybackSession(_ session: PlaybackSession) {
+        queue = session.queue
+        shuffledQueue = session.shuffled ? session.orderedQueue : []
+        if session.automaticOrder, autoMixOrderAvailable {
+            queueOrder = .autoMix
+            autoMixQueue = session.orderedQueue
+        } else if session.shuffled {
+            queueOrder = .shuffled
+        } else {
+            queueOrder = .listed
+            queue = session.orderedQueue
+        }
+        syncQueueOrderSelector()
+        currentIndex = session.currentIndex
+        currentTrack = session.currentTrack
+        playbackAccountID = session.accountID
+        playNextList = session.playNext
+        source = session.source
+        if let mode = RepeatMode(rawValue: session.repeatMode) { repeatMode = mode }
+        isFMMode = session.isFM
+        fmUpcoming = []
+        progress = session.progress
+        duration = session.currentTrack.duration
+        // A received checkpoint is not listening earned on this device.
+        scrobbled = true
+    }
+
+    func checkpointPlayback() { persistState() }
+
+    func suspendForAccountChange() {
+        resolveGeneration += 1
+        scrobbled = true
+        pause()
+        stopForOffline()
+        releaseOfflineLease()
+        prefetchTask?.cancel()
     }
 
     private func persistState() {
-        let state = PersistedState(
-            queue: Array(queue.prefix(1000)),
-            currentID: currentTrack?.id,
-            repeatMode: repeatMode.rawValue,
-            shuffle: shuffleEnabled,
-            recentContexts: recentContexts,
-            queueOrder: queueOrder.rawValue
-        )
-        guard let data = try? JSONEncoder().encode(state) else { return }
-        let url = Self.stateFileURL
-        Task.detached {
-            try? data.write(to: url, options: .atomic)
-        }
+        lastPlaybackCheckpoint = .now
+        let state = PlaybackState(session: playbackSession, recentContexts: recentContexts)
+        PlaybackStateStorage.save(state, to: Self.stateFileURL)
     }
 
     private func restoreState() {
         guard let data = try? Data(contentsOf: Self.stateFileURL),
-              let state = try? JSONDecoder().decode(PersistedState.self, from: data)
+              let state = try? JSONDecoder().decode(PlaybackState.self, from: data)
         else { return }
         // Recents outlive the queue: restore them before bailing out on an
         // empty queue, or the next played track persists an empty list over
         // them and the Dock menu loses its history for good.
         recentContexts = Array((state.recentContexts ?? []).prefix(Self.recentContextsLimit))
-        guard !state.queue.isEmpty else { return }
-        queue = state.queue
-        queueOrder = PlayerService.restoredQueueOrder(state)
+        if let session = state.session {
+            do {
+                try session.validate()
+                applyPlaybackSession(session)
+                NowPlayingManager.shared.updateMetadata(for: session.currentTrack, duration: duration)
+            } catch { ToastCenter.shared.show(error.localizedDescription) }
+            return
+        }
+        guard let legacy = state.legacy, !legacy.queue.isEmpty else { return }
+        queue = legacy.queue
+        queueOrder = PlayerService.restoredQueueOrder(legacy)
         syncQueueOrderSelector()
         switch queueOrder {
         case .listed: break
@@ -3717,7 +3779,7 @@ final class PlayerService: ObservableObject {
         // shows anyway until the first decision lands.
         case .autoMix: autoMixQueue = queue
         }
-        if let id = state.currentID,
+        if let id = legacy.currentID,
            let idx = activeQueue.firstIndex(where: { $0.id == id }) {
             currentIndex = idx
             currentTrack = activeQueue[idx]
@@ -3732,7 +3794,7 @@ final class PlayerService: ObservableObject {
     /// The queue order a persisted session restores to, migrating a state file
     /// written before the mode existed. Static and pure so the migration is
     /// testable without a player.
-    nonisolated static func restoredQueueOrder(_ state: PersistedState) -> QueueOrder {
+    nonisolated static func restoredQueueOrder(_ state: PlaybackState.Legacy) -> QueueOrder {
         state.queueOrder.flatMap(QueueOrder.init(rawValue:))
             ?? QueueOrder(migratingShuffle: state.shuffle)
     }

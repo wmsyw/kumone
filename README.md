@@ -51,6 +51,7 @@ Built with SwiftUI · Talks directly to NetEase's real API · Sparkle auto-updat
 - ✏️ **Playlist management** — create / delete / subscribe playlists, add / remove tracks, heart songs
 - 🔍 **Search** — aggregate / songs / artists / albums / playlists, trending keyword placeholder
 - ⌨️ **System integration** — media keys / Control Center (Now Playing), scrobbling, playback queue restored across launches
+- ☁️ **iCloud Sync** — hand off playback progress and queues between Mac and iPhone, sync preferences, and share sign-in sessions; works via iCloud Drive shared folders and natively supports sideloaded builds without central servers (see [documentation](docs/icloud-sync/icloud-sync.md))
 - 🌐 **Localization** — English and Simplified Chinese, following the system language; bilingual release notes in Sparkle updates
 
 ## Installation
@@ -152,7 +153,8 @@ Sources/Kumone/
 │   ├── API/            # NeteaseCrypto (weapi/eapi encryption), NeteaseClient (transport + cookies), NeteaseAPI (~50 endpoints)
 │   ├── Models/         # unified Track model (tolerates both JSON shapes), lyrics parser
 │   ├── Player/         # PlayerService (queue / shuffle / repeat / FM / URL resolution), UnblockService, NowPlayingManager
-│   └── Storage/        # AccountStore, SettingsManager, two-tier image cache
+│   ├── Storage/        # AccountStore, SettingsManager, two-tier image cache
+│   └── Sync/           # SyncService (cross-device playback handoff, preferences & login sync via iCloud Drive)
 ├── DesignSystem/       # design tokens, button styles (hover scale / row highlight / chips), skeletons, cards, marquee, artwork palette
 └── Features/           # pages + player bar + immersive now-playing + lyrics/queue panels
 ```

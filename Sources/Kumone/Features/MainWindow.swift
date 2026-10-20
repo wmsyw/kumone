@@ -134,6 +134,9 @@ struct MainWindow: View {
         #endif
         .environment(\.openLogin, { showLogin = true })
         .environment(\.openDestination, openDestination)
+        #if os(macOS)
+        .modifier(PlaybackLifecycle())
+        #endif
         .onReceive(NotificationCenter.default.publisher(for: .showDownloadedMusic)) { _ in
             player.showNowPlaying = false
             selection = .downloaded

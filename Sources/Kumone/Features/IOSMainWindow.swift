@@ -48,6 +48,7 @@ public struct IOSMainWindow: View {
             .preferredColorScheme(settings.appearance.colorScheme)
             .environment(\.openLogin, { showLogin = true })
             .environment(\.openDestination, openDestination)
+            .modifier(PlaybackLifecycle())
             .task {
                 await DownloadManager.shared.start()
                 await account.bootstrap()
@@ -76,13 +77,19 @@ public struct IOSMainWindow: View {
                     .environmentObject(toasts)
             }
             .overlay(alignment: .top) {
-                if let toast = toasts.current {
-                    ToastView(toast: toast)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .padding(.top, 8)
+                VStack(spacing: 8) {
+                    if let toast = toasts.current {
+                        ToastView(toast: toast)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    if !player.hasCurrentTrack {
+                        PlaybackHandoffBanner()
+                    }
                 }
+                .padding(.top, 8)
             }
             .animation(.spring(duration: 0.3), value: toasts.current)
+            .animation(.spring(duration: 0.35), value: player.hasCurrentTrack)
     }
 
     @ViewBuilder
@@ -603,6 +610,7 @@ struct IOSLibraryView: View {
         List {
             // Profile / Login header
             Section {
+                SyncedLoginButtons()
                 if let profile = account.profile {
                     HStack(spacing: 14) {
                         CachedAsyncImage(url: profile.avatarUrl?.resizedImageURL(128))
@@ -744,6 +752,7 @@ struct IOSLibraryView: View {
                 } label: {
                     Image(systemName: "gearshape")
                 }
+                .accessibilityLabel("设置")
             }
         }
         .sheet(isPresented: $showSettings) {

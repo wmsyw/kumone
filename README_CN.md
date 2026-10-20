@@ -51,6 +51,7 @@ SwiftUI 编写 · 直连网易云真实 API · Sparkle 自动更新
 - ✏️ **歌单管理** — 新建 / 删除 / 收藏歌单、添加 / 移除歌曲、红心
 - 🔍 **搜索** — 综合 / 单曲 / 歌手 / 专辑 / 歌单，热搜词占位
 - ⌨️ **系统集成** — 媒体键 / 控制中心（Now Playing）、听歌打卡、退出后恢复播放队列
+- ☁️ **iCloud 同步** — 多设备之间接续播放听歌状态、设置偏好及网易云登录登录态；基于 iCloud Drive 共享目录实现，无中心服务器（详见 [iCloud 同步说明](docs/icloud-sync/icloud-sync.md)）
 - 🌐 **多语言** — 简体中文与英文界面，跟随系统语言；Sparkle 更新说明双语
 
 ## 安装
@@ -124,7 +125,8 @@ Sources/Kumone/
 │   ├── API/            # NeteaseCrypto（weapi/eapi 加密）、NeteaseClient（传输 + Cookie）、NeteaseAPI（约 50 个端点）
 │   ├── Models/         # 统一 Track 模型（兼容新旧两种 JSON 格式）、歌词解析器
 │   ├── Player/         # PlayerService（队列 / 随机 / 循环 / FM / URL 解析）、UnblockService、NowPlayingManager
-│   └── Storage/        # AccountStore、SettingsManager、两级图片缓存
+│   ├── Storage/        # AccountStore、SettingsManager、两级图片缓存
+│   └── Sync/           # SyncService（跨设备接续播放、偏好设置及登录态同步，基于 iCloud Drive）
 ├── DesignSystem/       # 设计 token、按钮样式（hover 缩放 / 行高亮 / chip）、骨架屏、卡片、跑马灯、封面取色
 └── Features/           # 各页面 + 播放条 + 沉浸播放页 + 歌词/队列面板
 ```

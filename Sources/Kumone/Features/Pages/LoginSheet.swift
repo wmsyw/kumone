@@ -34,6 +34,7 @@ struct LoginSheet: View {
     @State private var cooldownTask: Task<Void, Never>?
 
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var toasts: ToastCenter
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -54,6 +55,12 @@ struct LoginSheet: View {
             }
             .padding(.top, 28)
 
+            SyncedLoginButtons(onStart: { pollTask?.cancel() }, onFinished: { signedIn in
+                if signedIn { dismiss() }
+                else if mode == .qr, !account.isLoggedIn { startLogin(reusingKey: true) }
+            })
+            .padding(.horizontal, 24)
+
             switch mode {
             case .qr:
                 qrSection
@@ -70,6 +77,9 @@ struct LoginSheet: View {
             .padding(.bottom, 20)
         }
         .frame(width: 320)
+        .overlay(alignment: .top) {
+            if let toast = toasts.current { ToastView(toast: toast).padding(.top, 8) }
+        }
         .onAppear { startLogin() }
         .onDisappear {
             pollTask?.cancel()

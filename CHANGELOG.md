@@ -7,17 +7,29 @@
 `---` 分隔，随后是完整的**中文**部分（`### 新增` / `### 修复` / `### 改进`）。英文块与中文块
 的条目一一对应、顺序一致。（0.3.19 起采用此双语分块格式；更早的版本沿用旧的中英交替格式。）
 
-## 0.3.21 - 2026-10-08
+## 0.3.21 - 2026-10-19
 
 ### Added
 
 - **iOS + macOS**: offline downloads — download songs and whole playlists for offline listening, with a 「已下载」 library and a storage page to see usage and manage space. Thanks @xyspg (#111).
 - **macOS**: customizable keyboard shortcuts for playback actions, plus optional system-wide (global) hotkeys — set them under Settings → 快捷键. Global hotkeys are off by default. Thanks @WillowBranch127 (#125, closes #122).
+- **iOS + macOS**: iCloud sync (off by default) — continue playback where another device left off, keep settings in sync, and optionally share your sign-in between devices through iCloud Drive or a folder you choose. Shared sign-ins are encrypted with a sync password you set, and signing out revokes the session once no other device is using it. Thanks @yamakze (#138).
 
 ### Fixed
 
 - **iOS + macOS**: NetEase audio now retries on the twin CDN host when one host is unreachable — fixing playback that occasionally stalled mid-queue (progress kept running) or wouldn't replay a just-played song on a poor network. Thanks @xyspg (#115, closes #106).
 - **macOS**: AutoMix no longer jumps the playhead backward (misaligning the progress bar and lyrics) when you pause and then resume. Thanks @WillowBranch127 (#126).
+- **macOS**: AutoMix no longer drops out briefly when you resume after a pause. Thanks @XerWandeRer (#140, closes #136).
+- **macOS**: scrolling the lyrics with a trackpad or mouse wheel no longer snaps back to the current line, and lines stay unblurred while you scroll. Thanks @xyspg (#139).
+- **macOS**: the window buttons stay in place on the immersive now-playing page. Thanks @yxxbc (#130, closes #128).
+- **macOS**: the Settings sub-pages (存储空间, 快捷键) have a back button that no longer overlaps the window controls, and Settings reopens on its main page. Thanks @yamakze (#135).
+
+### Improved
+
+- **iOS + macOS**: the now-playing page uses far less CPU — on macOS about 5% of a core while playing instead of about 50% — and frees its memory while the window is minimised. Thanks @yxxbc (#129, closes #131).
+- **macOS**: large playlists such as Liked Songs (1,000+ songs) scroll and load much more smoothly, artwork is decoded at the size it is shown, and the sidebar animates with less work. After updating, each cached song is downloaded once more on its next play. Thanks @morefreefg (#127).
+- **macOS**: Settings is tidier — AutoMix shows its options only when it is on, keyboard shortcuts switch between in-app and global with a segmented control, and clearing the song cache now runs right away without a confirmation. Thanks @yamakze (#135).
+- **macOS**: on macOS 26 and later the app now uses the current system window style. Thanks @yxxbc (#130).
 
 ---
 
@@ -25,11 +37,23 @@
 
 - **iOS + macOS**：离线下载——可下载单曲和整个歌单离线收听,新增「已下载」库和存储用量 / 管理页。感谢 @xyspg（#111）。
 - **macOS**：可自定义播放等操作的键盘快捷键,并支持可选的全局(系统级)快捷键——在 设置 → 快捷键 里设置,全局快捷键默认关闭。感谢 @WillowBranch127（#125，关闭 #122）。
+- **iOS + macOS**：iCloud 同步(默认关闭)——在另一台设备上接续播放、同步设置,并可通过 iCloud 云盘或自选文件夹在设备间共享登录。共享的登录信息以你设置的同步密码加密,退出登录时若已没有其他设备在用该会话,会一并注销。感谢 @yamakze（#138）。
 
 ### 修复
 
 - **iOS + macOS**：网易云音频在某个 CDN 主机不可达时会自动重试其孪生主机——修复了弱网下偶发的「队列中途卡住(进度还在走)」和「刚听过的歌无法重播」。感谢 @xyspg（#115，关闭 #106）。
 - **macOS**：AutoMix 暂停后恢复播放时,播放头不再往回跳(导致进度条和歌词错位)。感谢 @WillowBranch127（#126）。
+- **macOS**：AutoMix 暂停后恢复播放时不再短暂断音。感谢 @XerWandeRer（#140，关闭 #136）。
+- **macOS**：用触控板或鼠标滚轮翻看歌词时不再被拉回当前句,滚动期间歌词也不再模糊。感谢 @xyspg（#139）。
+- **macOS**：沉浸式播放页上的窗口按钮不再错位。感谢 @yxxbc（#130，关闭 #128）。
+- **macOS**：设置的二级页面(存储空间、快捷键)返回按钮不再与窗口控件重叠,重新打开设置时回到首页。感谢 @yamakze（#135）。
+
+### 改进
+
+- **iOS + macOS**：播放页的 CPU 占用大幅降低——macOS 上播放时约占 5% 个核心,此前约 50%——窗口最小化时还会释放内存。感谢 @yxxbc（#129，关闭 #131）。
+- **macOS**：「我喜欢的音乐」等大歌单(1000 首以上)加载和滚动更流畅,封面按显示尺寸解码,侧边栏动画开销更小。更新后,已缓存的歌曲下次播放时会重新下载一次。感谢 @morefreefg（#127）。
+- **macOS**：设置更简洁——AutoMix 仅在开启后显示子选项,快捷键用分段控件切换应用内 / 全局,清除歌曲缓存改为直接执行,不再弹出确认。感谢 @yamakze（#135）。
+- **macOS**：在 macOS 26 及以上版本,应用改用当前的系统窗口样式。感谢 @yxxbc（#130）。
 
 ## 0.3.20 - 2026-10-03
 

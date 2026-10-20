@@ -997,14 +997,13 @@ import Foundation
     // MARK: - Migration
 
     @Test func aSessionWrittenBeforeTheModeExistedMigratesFromItsShuffleBool() {
-        // No `queueOrder` key at all — the shape every state file on disk has
-        // today.
-        let legacyShuffling = PlayerService.PersistedState(
-            queue: [], currentID: nil, repeatMode: "off", shuffle: true,
-            recentContexts: nil, queueOrder: nil)
-        let legacyListed = PlayerService.PersistedState(
-            queue: [], currentID: nil, repeatMode: "off", shuffle: false,
-            recentContexts: nil, queueOrder: nil)
+        // Files written before queue-order modes have no `queueOrder` key.
+        let legacyShuffling = PlaybackState.Legacy(
+            queue: [], currentID: nil, shuffle: true,
+            queueOrder: nil)
+        let legacyListed = PlaybackState.Legacy(
+            queue: [], currentID: nil, shuffle: false,
+            queueOrder: nil)
         #expect(PlayerService.restoredQueueOrder(legacyShuffling) == .shuffled)
         #expect(PlayerService.restoredQueueOrder(legacyListed) == .listed)
         #expect(QueueOrder(migratingShuffle: true) == .shuffled)
@@ -1015,16 +1014,16 @@ import Foundation
         // Both keys present and disagreeing: a build that wrote `autoMix` also
         // wrote `shuffle: false`, and a build that has since been downgraded
         // and re-upgraded must not lose the mode.
-        let state = PlayerService.PersistedState(
-            queue: [], currentID: nil, repeatMode: "off", shuffle: false,
-            recentContexts: nil, queueOrder: "autoMix")
+        let state = PlaybackState.Legacy(
+            queue: [], currentID: nil, shuffle: false,
+            queueOrder: "autoMix")
         #expect(PlayerService.restoredQueueOrder(state) == .autoMix)
     }
 
     @Test func anUnknownQueueOrderFallsBackToTheBoolRatherThanFailing() {
-        let state = PlayerService.PersistedState(
-            queue: [], currentID: nil, repeatMode: "off", shuffle: true,
-            recentContexts: nil, queueOrder: "someFutureMode")
+        let state = PlaybackState.Legacy(
+            queue: [], currentID: nil, shuffle: true,
+            queueOrder: "someFutureMode")
         #expect(PlayerService.restoredQueueOrder(state) == .shuffled)
     }
 

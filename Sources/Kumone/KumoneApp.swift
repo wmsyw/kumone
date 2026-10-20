@@ -152,6 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        PlayerService.shared.checkpointPlayback()
+        PlaybackStateStorage.flush()
+    }
+
     /// Deliver recording input before playback shortcuts or menu key equivalents consume it.
     @MainActor
     static func interceptKeyEvent(_ event: NSEvent) -> NSEvent? {

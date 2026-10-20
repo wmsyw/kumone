@@ -44,19 +44,22 @@ final class NeteaseClient: @unchecked Sendable {
     private static let bindingKey = "__kumone_session_binding"
     private var sessionBinding: String?
     private var authEpoch: UInt64 = 0
-    private let cookieFileURL: URL
+    private let cookieFileURL: URL?
 
-    init(cookieDirectory: URL? = nil, configuration: URLSessionConfiguration? = nil) {
+    init(cookieDirectory: URL? = nil, configuration: URLSessionConfiguration? = nil, persistsCookies: Bool = true) {
         let config = configuration ?? URLSessionConfiguration.default
         config.httpShouldSetCookies = false
         config.httpCookieAcceptPolicy = .never
         config.timeoutIntervalForRequest = 15
         session = URLSession(configuration: config)
 
+        guard persistsCookies else { cookieFileURL = nil; return }
+
         let support = cookieDirectory ?? KumonePaths.applicationSupport
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        cookieFileURL = support.appendingPathComponent("cookies.json")
-        if let data = try? Data(contentsOf: cookieFileURL),
+        let url = support.appendingPathComponent("cookies.json")
+        cookieFileURL = url
+        if let data = try? Data(contentsOf: url),
            let stored = try? JSONDecoder().decode([String: String].self, from: data) {
             cookies = stored
             let savedBinding = cookies.removeValue(forKey: Self.bindingKey)
@@ -115,6 +118,35 @@ final class NeteaseClient: @unchecked Sendable {
         return true
     }
 
+    /// Commit a verified sign-in durably before changing the live cookie jar.
+    /// Disk failures leave the current authentication untouched.
+    func replaceAuthentication(with authentication: [String: String]) throws {
+        guard let token = authentication["MUSIC_U"], !token.isEmpty else { throw NeteaseAPIError.needLogin }
+        cookieWriteLock.lock(); defer { cookieWriteLock.unlock() }
+        cookieLock.lock()
+        var snapshot = cookies
+        cookieLock.unlock()
+        snapshot.removeValue(forKey: "MUSIC_U")
+        snapshot.removeValue(forKey: "__csrf")
+        snapshot.merge(authentication.filter { ["MUSIC_U", "__csrf"].contains($0.key) }) { _, new in new }
+        try commitAuthentication(snapshot, binding: Self.fingerprint(token))
+    }
+
+    /// The caller holds cookieWriteLock so a failed disk write cannot leave the
+    /// persisted and live authentication states disagreeing.
+    private func commitAuthentication(_ snapshot: [String: String], binding: String?) throws {
+        if let cookieFileURL {
+            var stored = snapshot
+            stored[Self.bindingKey] = binding
+            try JSONEncoder().encode(stored).write(to: cookieFileURL, options: .atomic)
+        }
+        cookieLock.lock()
+        cookies = snapshot
+        sessionBinding = binding
+        authEpoch += 1
+        cookieLock.unlock()
+    }
+
     /// Ingests a `;;`-joined raw cookie string as returned by the QR login check.
     func ingestCookieString(_ raw: String) {
         var parsed: [String: String] = [:]
@@ -129,19 +161,18 @@ final class NeteaseClient: @unchecked Sendable {
         setCookies(parsed)
     }
 
-    func clearAuthCookies() {
+    func clearAuthCookies() throws {
         cookieWriteLock.lock(); defer { cookieWriteLock.unlock() }
         cookieLock.lock()
-        authEpoch += 1
-        sessionBinding = nil
-        cookies.removeValue(forKey: "MUSIC_U")
-        cookies.removeValue(forKey: "__csrf")
-        let snapshot = cookies
+        var snapshot = cookies
         cookieLock.unlock()
-        persist(snapshot)
+        snapshot.removeValue(forKey: "MUSIC_U")
+        snapshot.removeValue(forKey: "__csrf")
+        try commitAuthentication(snapshot, binding: nil)
     }
 
     private func persist(_ snapshot: [String: String]) {
+        guard let cookieFileURL else { return }
         if let data = try? JSONEncoder().encode(snapshot) {
             try? data.write(to: cookieFileURL, options: .atomic)
         }
