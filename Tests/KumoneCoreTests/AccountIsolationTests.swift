@@ -41,10 +41,10 @@ struct AccountIsolationTests {
         let cookies = liveClient.authenticationCookies()
         try liveClient.clearAuthCookies()
         let logout = Task { try await NeteaseAPI.logout(detachedCookies: cookies, using: logoutClient) }
-        for _ in 0..<200 where DeferredAPIProtocol.state.get("/weapi/logout") == nil {
+        for _ in 0..<200 where DeferredAPIProtocol.state.get("/eapi/logout") == nil {
             try await Task.sleep(for: .milliseconds(5))
         }
-        let pending = try #require(DeferredAPIProtocol.state.get("/weapi/logout"))
+        let pending = try #require(DeferredAPIProtocol.state.get("/eapi/logout"))
         let usesOldSession = pending.request.value(forHTTPHeaderField: "Cookie")?.contains("MUSIC_U=synthetic-old") == true
         #expect(usesOldSession)
         liveClient.setCookies(["MUSIC_U": "synthetic-new"])
@@ -78,7 +78,7 @@ struct AccountIsolationTests {
         let client = NeteaseClient(cookieDirectory: root, configuration: configuration)
         client.setCookies(["MUSIC_U": "synthetic-before"])
         let before = client.authenticationFingerprint
-        let refreshing = Task { try await client.weapi("/login/token/refresh") }
+        let refreshing = Task { try await client.eapi("/login/token/refresh") }
         for _ in 0..<200 where DeferredAPIProtocol.state.get() == nil { try await Task.sleep(for: .milliseconds(5)) }
         let reply = try #require(DeferredAPIProtocol.state.get())
         reply.finish(token: "synthetic-rejected", code: 301)
@@ -93,7 +93,7 @@ struct AccountIsolationTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [DeferredAPIProtocol.self]
         let client = NeteaseClient(cookieDirectory: root, configuration: configuration)
-        let request = Task { try await client.weapi("/test-only") }
+        let request = Task { try await client.eapi("/test-only") }
         for _ in 0..<200 where DeferredAPIProtocol.state.get() == nil { try await Task.sleep(for: .milliseconds(5)) }
         let pending = try #require(DeferredAPIProtocol.state.get())
         client.setCookies(["MUSIC_U": "synthetic-session-a"])
@@ -118,7 +118,7 @@ struct AccountIsolationTests {
         configuration.protocolClasses = [DeferredAPIProtocol.self]
         let client = NeteaseClient(cookieDirectory: root, configuration: configuration)
         client.setCookies(["MUSIC_U": "synthetic-session-a"])
-        let request = Task { try await client.weapi(path) }
+        let request = Task { try await client.eapi(path) }
         for _ in 0..<200 where DeferredAPIProtocol.state.get() == nil { try await Task.sleep(for: .milliseconds(5)) }
         let pending = try #require(DeferredAPIProtocol.state.get())
         try client.clearAuthCookies()
@@ -143,12 +143,12 @@ struct AccountIsolationTests {
         let profile = try JSONDecoder().decode(UserProfile.self, from: Data("{\"userId\":1,\"nickname\":\"Fixture\"}".utf8))
         let snapshot = AccountSnapshotStorage(url: root.appendingPathComponent("account.json"))
         try snapshot.save(.init(authenticationFingerprint: binding, profile: profile, likedTrackIDs: [42], playlists: [], savedAt: Date()))
-        let older = Task { try await client.weapi("/test-only") }
-        for _ in 0..<200 where DeferredAPIProtocol.state.get("/weapi/test-only") == nil { try await Task.sleep(for: .milliseconds(5)) }
-        let oldReply = try #require(DeferredAPIProtocol.state.get("/weapi/test-only"))
-        let refresh = Task { try await client.weapi("/login/token/refresh") }
-        for _ in 0..<200 where DeferredAPIProtocol.state.get("/weapi/login/token/refresh")?.request.url?.path != "/weapi/login/token/refresh" { try await Task.sleep(for: .milliseconds(5)) }
-        let renewed = try #require(DeferredAPIProtocol.state.get("/weapi/login/token/refresh"))
+        let older = Task { try await client.eapi("/test-only") }
+        for _ in 0..<200 where DeferredAPIProtocol.state.get("/eapi/test-only") == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let oldReply = try #require(DeferredAPIProtocol.state.get("/eapi/test-only"))
+        let refresh = Task { try await client.eapi("/login/token/refresh") }
+        for _ in 0..<200 where DeferredAPIProtocol.state.get("/eapi/login/token/refresh")?.request.url?.path != "/eapi/login/token/refresh" { try await Task.sleep(for: .milliseconds(5)) }
+        let renewed = try #require(DeferredAPIProtocol.state.get("/eapi/login/token/refresh"))
         #expect(renewed.request.value(forHTTPHeaderField: "Cookie")?.contains("__kumone_session_binding") == false)
         renewed.finish(token: "synthetic-renewed")
         _ = try await refresh.value
@@ -161,7 +161,7 @@ struct AccountIsolationTests {
         let reopened = NeteaseClient(cookieDirectory: root, configuration: configuration)
         #expect(reopened.authenticationFingerprint == binding)
         #expect(snapshot.load(fingerprint: reopened.authenticationFingerprint)?.profile.userId == 1)
-        let afterRestart = Task { try await reopened.weapi("/test-only") }
+        let afterRestart = Task { try await reopened.eapi("/test-only") }
         for _ in 0..<200 where DeferredAPIProtocol.state.get() == nil { try await Task.sleep(for: .milliseconds(5)) }
         let restartedRequest = try #require(DeferredAPIProtocol.state.get())
         #expect(restartedRequest.request.value(forHTTPHeaderField: "Cookie")?.contains("__kumone_session_binding") == false)

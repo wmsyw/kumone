@@ -79,14 +79,18 @@ enum NowPlayingPresentationMetrics {
             || predictedTranslation < -miniPlayerExpandPrediction
     }
 
-    /// The system can briefly report no accessory placement while it reparents
-    /// the view between the expanded and inline tab-bar containers. Prefer the
-    /// compact layout during that undefined interval so a full-width player
-    /// cannot be laid out inside the inline container for a transient frame.
+    /// The system reports no accessory placement while it reparents the view,
+    /// both between the expanded and inline tab-bar containers and for several
+    /// seconds after the now-playing zoom transition hands the accessory back.
+    /// Keep the last placement the system reported through that interval so
+    /// returning from now playing doesn't collapse the expanded bar; only fall
+    /// back to the compact layout before any placement is known, so a
+    /// full-width player cannot be laid out inside the inline container.
     static func shouldUseInlineMiniPlayerLayout(
-        placementIsInline: Bool?
+        placementIsInline: Bool?,
+        lastKnownPlacementIsInline: Bool?
     ) -> Bool {
-        placementIsInline ?? true
+        placementIsInline ?? lastKnownPlacementIsInline ?? true
     }
 }
 

@@ -159,6 +159,10 @@ jobs:
           git config --global user.name "github-actions"
           brew update
           brew tap owo-network/brew
+          # Homebrew 5+ refuses to load casks from a third-party tap it has
+          # not been told to trust, which silently failed the bump (the step
+          # is best-effort) and left the cask at 0.3.0 for several releases.
+          brew trust owo-network/brew
           brew bump-cask-pr \
             --version="$VERSION" \
             --sha256="$SHA" \

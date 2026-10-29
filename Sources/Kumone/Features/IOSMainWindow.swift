@@ -402,18 +402,26 @@ private struct MiniPlayerAccessoryModifier: ViewModifier {
 @available(iOS 26.0, *)
 private struct IOSMiniPlayerAccessory: View {
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    @State private var lastKnownPlacementIsInline: Bool?
     let transitionNamespace: Namespace.ID
 
     var body: some View {
         IOSMiniPlayerBar(presentation: presentation)
             // Match the complete system accessory, never only its artwork.
             .nowPlayingTransitionSource(in: transitionNamespace)
+            .onChange(of: placementIsInline, initial: true) { _, isInline in
+                if let isInline { lastKnownPlacementIsInline = isInline }
+            }
+    }
+
+    private var placementIsInline: Bool? {
+        placement.map { $0 == .inline }
     }
 
     private var presentation: IOSMiniPlayerBar.Presentation {
-        let placementIsInline = placement.map { $0 == .inline }
-        return NowPlayingPresentationMetrics.shouldUseInlineMiniPlayerLayout(
-            placementIsInline: placementIsInline
+        NowPlayingPresentationMetrics.shouldUseInlineMiniPlayerLayout(
+            placementIsInline: placementIsInline,
+            lastKnownPlacementIsInline: lastKnownPlacementIsInline
         ) ? .inlineAccessory : .bottomAccessory
     }
 }

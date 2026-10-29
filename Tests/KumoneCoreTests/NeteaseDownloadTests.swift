@@ -91,7 +91,7 @@ struct NeteaseDownloadTests {
         }
         let client = NeteaseClient(cookieDirectory: cookieDirectory)
         do {
-            let body = try await client.weapi("/v3/song/detail", ["c": "[{\"id\":\(trackID)}]"])
+            let body = try await client.eapi("/v3/song/detail", ["c": "[{\"id\":\(trackID)}]"])
             let details = try client.decoded(NeteaseAPI.SongDetailResponse.self, from: body)
             let track = try #require(details.songs.first)
             let data = try await NeteaseAPI.songDownloadURL(id: track.id, level: "exhigh", client: client)

@@ -7,6 +7,72 @@
 `---` 分隔，随后是完整的**中文**部分（`### 新增` / `### 修复` / `### 改进`）。英文块与中文块
 的条目一一对应、顺序一致。（0.3.19 起采用此双语分块格式；更早的版本沿用旧的中英交替格式。）
 
+## 0.3.24 - 2026-10-28
+
+### Fixed
+
+- **iOS**: the mini player briefly lost its layout after leaving the Now Playing screen — the accessory placement reads nil for a few seconds while the zoom transition returns it to the tab bar, and the last reported placement is now kept through that interval.
+
+### Improved
+
+- **iOS + macOS**: every request is now routed through NetEase's eapi as the desktop client, as mygo-cloudmusic does; phone-number login and following an artist answer -460 (检测到您的网络环境存在风险) through the eapi, so those calls and the SMS code go through the plain web API, and the QR login uses type 3 with the /nuser/account/get account lookup, as the desktop client does.
+
+---
+
+### 修复
+
+- **iOS**：从正在播放页面返回后，迷你播放器会短暂丢失布局——缩放过渡回到标签栏的几秒内 accessory 位置读取为 nil，现在这段时间内保留上一次上报的位置。
+
+### 改进
+
+- **iOS + macOS**：所有请求改走网易云的 eapi 并以桌面客户端身份发送，参照 mygo-cloudmusic 的做法；手机号登录和关注歌手在 eapi 下返回 -460（检测到您的网络环境存在风险），这几个调用和短信验证码改走普通 Web API，扫码登录改用 type 3 并通过 /nuser/account/get 查询账号，与桌面客户端一致。
+
+## 0.3.23 - 2026-10-27
+
+### Fixed
+
+- **iOS + macOS**: liking a song no longer fails with "当前环境异常，已取消喜欢" — the like, removing a song from Personal FM and song details now go through NetEase's desktop-client API as a device that stays the same across launches, the way mygo-cloudmusic does it (#81).
+
+### Improved
+
+- **iOS + macOS**: every desktop-client request — playback URLs, downloads, search, charts — now identifies this install with a device ID made once and kept, instead of a constant every install shared, which NetEase's risk control had started to refuse.
+
+---
+
+### 修复
+
+- **iOS + macOS**：点击喜欢不再提示「当前环境异常，已取消喜欢」——喜欢、私人漫游中移除歌曲和歌曲详情改走网易云桌面客户端接口，并以每次启动都相同的设备 ID 发送请求，参照 mygo-cloudmusic 的做法（#81）。
+
+### 改进
+
+- **iOS + macOS**：所有桌面客户端接口（播放地址、下载、搜索、排行榜）改用安装时生成并持久保存的设备 ID，不再所有用户共用同一个标识——网易云风控已开始拒绝这种请求。
+
+## 0.3.22 - 2026-10-27
+
+### Added
+
+- **iOS + macOS**: a setting to stop the now-playing artwork from opening the album when clicked — Settings → 点击封面打开专辑, on by default. Thanks @danielzmeow (#144, closes #143).
+- **iOS + macOS**: word-by-word lyrics now run for every song — when NetEase has no verbatim timing for a track, the line's time is spread across its characters (the way mygo-cloudmusic does it), so the karaoke wipe no longer falls back to plain line highlighting. Punctuation and spaces light up with the character before them instead of taking singing time of their own.
+
+### Fixed
+
+- **macOS**: the collapse chevron on the immersive now-playing page is clickable again — the hidden toolbar's sidebar-toggle slot was swallowing the click, so the page only answered to Escape.
+- **iOS + macOS**: translations and romaji line up with verbatim lyrics that start a few hundred milliseconds off the plain lyric grid (those lines used to show no translation), and a song that ships verbatim lyrics without a plain body shows its lyrics instead of none.
+- **iOS + macOS**: the English settings page no longer shows untranslated labels for the now-playing mode, ambient colour, desktop lyrics and update options. Thanks @danielzmeow (#145).
+
+---
+
+### 新增
+
+- **iOS + macOS**：新增「点击封面打开专辑」开关（设置 → 播放页），默认开启；关闭后播放页点击封面不再跳转到专辑。感谢 @danielzmeow（#144，关闭 #143）。
+- **iOS + macOS**：逐字歌词覆盖所有歌曲——网易云没有提供逐字时间轴的歌曲，参照 mygo-cloudmusic 的做法把每行时长按字分摊，卡拉OK 式逐字点亮不再退回整行高亮；标点和空格不再占用演唱时间，跟随前一个字点亮。
+
+### 修复
+
+- **macOS**：沉浸式播放页左上角的收起按钮恢复可点击——此前被隐藏工具栏中侧边栏开关的占位区域挡住，只能按 Esc 关闭。
+- **iOS + macOS**：逐字歌词与普通歌词时间轴相差几百毫秒时，翻译和罗马音不再丢失；只有逐字歌词、没有普通歌词的歌曲也能正常显示歌词。
+- **iOS + macOS**：英文界面的设置页补齐了播放页模式、环境色、桌面歌词、更新等选项的翻译。感谢 @danielzmeow（#145）。
+
 ## 0.3.21 - 2026-10-19
 
 ### Added
