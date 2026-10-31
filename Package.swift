@@ -86,9 +86,9 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
                 // AutoMix stem hand-overs: KumoneCore stays MLX-free and takes
                 // a separator as a closure, which `StemSetup` installs here.
-                // The built app therefore needs mlx.metallib beside its binary
-                // — see Scripts/fetch-mlx-metallib.sh — and degrades to the
-                // whole-mix transition path without it.
+                // The app compresses the signed Metal resource framework;
+                // StemKit extracts and loads it on first separation. Bare
+                // SwiftPM executables use Scripts/fetch-mlx-metallib.sh.
                 .target(name: "StemKit", condition: .when(platforms: [.macOS])),
             ],
             path: "Sources/KumoneLauncher",

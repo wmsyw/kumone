@@ -292,6 +292,7 @@ struct PlayerIconButton: View {
     let icon: String
     var size: CGFloat = 14
     var isActive = false
+    var showsActiveBackground = true
     var disabled = false
     let action: () -> Void
 
@@ -320,7 +321,7 @@ struct PlayerIconButton: View {
     private var backgroundColor: Color {
         let base: Color = colorScheme == .dark ? .white : .black
         if isHovering, !disabled { return base.opacity(0.08) }
-        if isActive { return base.opacity(0.05) }
+        if isActive, showsActiveBackground { return base.opacity(0.05) }
         return .clear
     }
 }
@@ -330,6 +331,7 @@ struct PlayerIconButton: View {
 struct LikeButton: View {
     let trackID: Int
     var size: CGFloat = 13
+    var showsActiveBackground = true
 
     @EnvironmentObject private var account: AccountStore
 
@@ -337,7 +339,8 @@ struct LikeButton: View {
         let liked = account.isLiked(trackID)
         PlayerIconButton(
             icon: liked ? "heart.fill" : "heart", size: size,
-            isActive: liked
+            isActive: liked,
+            showsActiveBackground: showsActiveBackground
         ) {
             Task { await account.toggleLike(trackID: trackID) }
         }

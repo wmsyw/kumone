@@ -4,6 +4,7 @@ import SwiftUI
 #if os(macOS)
 public struct KumoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @AppStorage(SettingsManager.Keys.menuBarPlayer) private var showMenuBarPlayer = false
 
     @StateObject private var player = PlayerService.shared
     @StateObject private var account = AccountStore.shared
@@ -106,12 +107,29 @@ public struct KumoneApp: App {
         .windowResizability(.contentMinSize)
         #endif
 
+        MenuBarExtra(isInserted: Binding(
+            get: { showMenuBarPlayer },
+            set: { inserted in
+                // AppStorage invalidates the scene even for an unchanged write.
+                if showMenuBarPlayer != inserted {
+                    showMenuBarPlayer = inserted
+                }
+            })) {
+            MenuBarPlayer()
+                .environmentObject(player)
+                .environmentObject(account)
+                .tint(Theme.accent)
+        } label: {
+            MenuBarPlayerLabel()
+        }
+        .menuBarExtraStyle(.window)
+
         Settings {
             SettingsView()
                 .environment(\.openDestination, { destination in
                     guard destination == .downloaded else { return }
                     NotificationCenter.default.post(name: .showDownloadedMusic, object: nil)
-                    _ = AppDelegate.shared?.applicationShouldHandleReopen(NSApp, hasVisibleWindows: true)
+                    AppDelegate.shared?.reopenMainWindow()
                 })
                 .environmentObject(account)
                 .environmentObject(settings)
@@ -133,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// interceptor hides (orders out) the window instead of destroying the
     /// single-instance `Window` scene, so we can always bring it back here.
     weak var mainWindow: NSWindow?
+    private let hiddenWindows = HiddenAppWindows()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
@@ -157,6 +176,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         PlaybackStateStorage.flush()
     }
 
+    func applicationWillHide(_ notification: Notification) {
+        hiddenWindows.capture(NSApp.orderedWindows)
+    }
+
+    func applicationWillUnhide(_ notification: Notification) {
+        hiddenWindows.suppressUnhide(for: NSApp.keyWindow)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        hiddenWindows.restore(keyWindow: NSApp.keyWindow)
+    }
+
     /// Deliver recording input before playback shortcuts or menu key equivalents consume it.
     @MainActor
     static func interceptKeyEvent(_ event: NSEvent) -> NSEvent? {
@@ -165,7 +196,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
         // Outside recording, unmodified Esc closes the immersive playback page.
-        if event.keyCode == 53,
+        if event.window === shared?.mainWindow,
+           event.keyCode == 53,
            event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
            PlayerService.shared.showNowPlaying {
             PlayerService.shared.showNowPlaying = false
@@ -191,7 +223,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows _: Bool) -> Bool {
+    func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
+        reopenMainWindow()
+        // Fully handled above; returning `false` prevents AppKit from also
+        // enqueuing another SwiftUI scene request (which re-created #58's
+        // duplicate window).
+        return false
+    }
+
+    func reopenMainWindow() {
         // `hasVisibleWindows` is unreliable here: helper windows such as the
         // desktop-lyrics overlay make it `true` even when the main window is
         // gone, so decide based on the main window itself.
@@ -201,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // still around — just hidden and/or miniaturised, and possibly behind
         // other windows. Restore and front it. Only if it truly no longer
         // exists do we ask SwiftUI to recreate the scene.
-        let target = mainWindow ?? sender.windows.first {
+        let target = mainWindow ?? NSApp.windows.first {
             $0.styleMask.contains(.titled) && $0.canBecomeMain
         }
         if let window = target {
@@ -216,10 +256,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             openMainWindow?()
         }
-        // Fully handled above; returning `false` prevents AppKit from also
-        // enqueuing another SwiftUI scene request (which re-created #58's
-        // duplicate window).
-        return false
     }
 }
 #endif

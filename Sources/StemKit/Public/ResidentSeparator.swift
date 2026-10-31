@@ -59,25 +59,14 @@ public final class ResidentStemSeparator: @unchecked Sendable {
         return prepared
     }
 
-    /// Is separation actually possible here, right now, with no downloads and
-    /// nothing that can fail fatally?
-    ///
-    /// Deliberately conservative, and deliberately *not* `prepare()`:
-    /// - the checkpoint must already be on disk. `prepare` would fetch it, and
-    ///   a music player must not start a 64 MiB download because a song is
-    ///   coming to an end;
-    /// - MLX loads its Metal kernels from a `mlx.metallib` that Command Line
-    ///   Tools builds cannot produce (`Scripts/fetch-mlx-metallib.sh`), and
-    ///   missing it is not a Swift error but a hard failure inside MLX. So the
-    ///   file is looked for before MLX is ever touched.
-    ///
-    /// False simply means the caller keeps doing what it did before stems
-    /// existed.
+    /// Are the model and kernel resources supplied on this Apple silicon machine?
+    /// Does not download, extract, or initialize MLX. `prepare()` installs the
+    /// bundled framework on demand and reports extraction or loading failures.
     public static func isRunnable(modelStore: ModelStore = ModelStore(),
                                   descriptor: ModelDescriptor = .zfturboVocalsV1) -> Bool {
         #if arch(arm64)
         FileManager.default.fileExists(atPath: modelStore.localURL(for: descriptor).path)
-            && metallibURL() != nil
+            && (StemMetalResources.shared.archive != nil || metallibURL() != nil)
         #else
         // The release app is universal, but MLX's Metal backend is Apple
         // silicon only: the x86_64 slice compiles and must never run it.
@@ -85,14 +74,9 @@ public final class ResidentStemSeparator: @unchecked Sendable {
         #endif
     }
 
-    /// Where MLX will find its kernels, if it can: beside the running binary
-    /// (what `fetch-mlx-metallib.sh` installs), inside the app bundle, or in a
-    /// resource bundle SwiftPM built with Xcode.
-    ///
-    /// Answered once per process. The launch path asks twice within a few
-    /// lines (`isRunnable()` then `hasFourStem()`), and the walk enumerates
-    /// every loaded bundle and framework plus the contents of the resource
-    /// directory — none of which can change while the process runs.
+    /// Uncompressed kernels for bare SwiftPM/CLI builds, cached on first access.
+    /// Packaged apps use `StemMetalResources` instead; this lookup does not
+    /// discover the framework's `default.metallib` installed later on first use.
     public static func metallibURL() -> URL? { cachedMetallibURL }
 
     private static let cachedMetallibURL: URL? = findMetallib()

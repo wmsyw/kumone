@@ -110,6 +110,7 @@ final class SettingsManager: ObservableObject {
         static let autoCheckUpdates = "settings.autoCheckUpdates"
         static let desktopLyrics = "settings.showDesktopLyrics"
         #if os(macOS)
+        static let menuBarPlayer = "settings.showMenuBarPlayer"
         static let automix = "settings.automixEnabled"
         static let automixTransitions = "settings.automixTransitions"
         static let automixOrder = "settings.automixOrder"

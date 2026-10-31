@@ -68,9 +68,21 @@ struct TrackTable: NSViewRepresentable {
             content = next
             self.environment = environment
             let changedHeights = updateChrome(notifyTable: false)
-            if previousIDs != next.trackIDs || previousRowHeight != next.rowHeight {
+            if previousRowHeight != next.rowHeight {
                 table.rowHeight = next.rowHeight
                 table.reloadData()
+            } else if previousIDs != next.trackIDs {
+                // `reloadData()` rebuilds the header row too, which ends editing
+                // in the header's search field on every filtered keystroke.
+                // Reload only the song rows and the footer, whose index moves.
+                let rows = IndexSet(1...(next.trackIDs.count + 1))
+                table.noteNumberOfRowsChanged()
+                NSAnimationContext.runAnimationGroup { animation in
+                    animation.duration = 0
+                    table.noteHeightOfRows(withIndexesChanged: rows)
+                }
+                table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+                notifyHeightChanges(changedHeights)
             } else {
                 // Permission, search-header and download updates refresh only
                 // existing cells. Playback is observed inside each hosted row.

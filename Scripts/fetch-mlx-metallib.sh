@@ -23,7 +23,7 @@
 #   --product Kumone` puts the app binary). MLX looks for `mlx.metallib` next to the
 #   running executable, so the metallib must sit beside whichever binary you intend
 #   to run — repeat for .build/debug, or for a packaged app's Contents/MacOS.
-#   Scripts/build-app.sh copies the first one it finds under .build into the app.
+#   Scripts/build-app.sh compresses the kernels in a signed resource framework.
 #
 #   The extracted file is checked against MLX_METALLIB_SHA256 below (also when it
 #   is already present); a mismatch is an error. Bump both together.

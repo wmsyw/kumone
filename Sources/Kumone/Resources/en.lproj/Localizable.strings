@@ -536,3 +536,8 @@
 "同步数据需要更新版本的 Kumone" = "Sync data requires a newer version of Kumone";
 "接续需要登录同一网易云账号" = "Sign in to the same NetEase account to continue playback";
 "iCloud 账号已更改" = "iCloud account changed";
+"在菜单栏显示" = "Show in Menu Bar";
+"暂无播放" = "Nothing Playing";
+"打开 Kumone" = "Open Kumone";
+"设置…" = "Settings…";
+"退出 Kumone" = "Quit Kumone";

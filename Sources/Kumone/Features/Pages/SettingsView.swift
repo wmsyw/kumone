@@ -9,6 +9,7 @@ struct SettingsView: View {
     @Environment(\.openDestination) private var openDestination
     @Environment(\.dismiss) private var dismiss
     #if os(macOS)
+    @AppStorage(SettingsManager.Keys.menuBarPlayer) private var showMenuBarPlayer = false
     @State private var navigationPath: [SettingsPage] = []
     #endif
 
@@ -161,6 +162,7 @@ struct SettingsView: View {
 
             #if os(macOS)
             Section("通用") {
+                Toggle("在菜单栏显示", isOn: $showMenuBarPlayer)
                 NavigationLink(value: SettingsPage.shortcuts) {
                     Label("快捷键", systemImage: "keyboard")
                 }

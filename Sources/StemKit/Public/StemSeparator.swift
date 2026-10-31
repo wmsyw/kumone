@@ -152,6 +152,9 @@ public final class StemSeparator: @unchecked Sendable {
         warmUp: Bool = true,
         downloadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> StemSeparator {
+        #if os(macOS)
+        try await StemMetalResources.shared.load()
+        #endif
         let weights = try await modelStore.ensureAvailable(descriptor, progress: downloadProgress)
         let separator = try await RoFormerSeparator(
             weightsFile: weights,

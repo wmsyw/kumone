@@ -5479,11 +5479,14 @@ final class PlaybackEngine: @unchecked Sendable {
             mSelector: kAudioDeviceProcessorOverload,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            // Delivered on `queue`, so this is a locked context like any other.
-            self?.handleOutputOverloadLocked(device: device)
+        let block: AudioObjectPropertyListenerBlock = { [weak self, queue] _, _ in
+            // CoreAudio delivers IO-context overloads synchronously. Never make
+            // its IO thread wait for the queue that starts or destroys the graph.
+            queue.async { [weak self] in
+                self?.handleOutputOverloadLocked(device: device)
+            }
         }
-        let status = AudioObjectAddPropertyListenerBlock(device, &address, queue, block)
+        let status = AudioObjectAddPropertyListenerBlock(device, &address, nil, block)
         guard status == noErr else {
             PlaybackJournal.note("output overload listener failed device=\(device) "
                                  + "status=\(status)")
@@ -5499,7 +5502,7 @@ final class PlaybackEngine: @unchecked Sendable {
             mSelector: kAudioDeviceProcessorOverload,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
-        AudioObjectRemovePropertyListenerBlock(device, &address, queue, block)
+        AudioObjectRemovePropertyListenerBlock(device, &address, nil, block)
         overloadListener = nil
         overloadListenerDevice = nil
     }

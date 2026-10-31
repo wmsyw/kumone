@@ -179,9 +179,7 @@ public struct ModelStore: Sendable {
     /// Application Support rather than Caches — the system must not be free to evict a
     /// 64 MB download the user explicitly opted into.
     public static var defaultDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first ?? URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support")
-        return base.appendingPathComponent("Kumone/Models", isDirectory: true)
+        StemKitDirectories.applicationSupport.appendingPathComponent("Models", isDirectory: true)
     }
 
     /// Base of the release both checkpoints are published under, converted.

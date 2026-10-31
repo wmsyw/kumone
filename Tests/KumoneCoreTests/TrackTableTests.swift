@@ -46,6 +46,34 @@ struct TrackTableTests {
         }
     }
 
+    @Test func filteringKeepsTheHeaderSearchFieldEditing() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let coordinator = TrackTable.Coordinator()
+        let container = try #require(window.contentView)
+        coordinator.scrollView.frame = container.bounds
+        container.addSubview(coordinator.scrollView)
+        coordinator.update(fixture(count: 1_200), environment: EnvironmentValues())
+        coordinator.table.layoutSubtreeIfNeeded()
+        let header = try #require(coordinator.table.view(atColumn: 0, row: 0, makeIfNecessary: false))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 22))
+        header.addSubview(field)
+        #expect(window.makeFirstResponder(field))
+
+        for count in [2, 0, 90, 1_200] {
+            coordinator.update(fixture(count: count), environment: EnvironmentValues())
+            coordinator.table.layoutSubtreeIfNeeded()
+            #expect(field.currentEditor() != nil)
+            #expect(window.firstResponder === field.currentEditor())
+            // The footer moved to a row that may have shown a song before.
+            let footer = coordinator.table.view(atColumn: 0, row: count + 1, makeIfNecessary: false)
+            if count < 10 {
+                #expect(footer != nil)
+                #expect(footer?.identifier?.rawValue != "track")
+            }
+        }
+    }
+
     @Test func contentSizedChromeUpdatesWithoutChangingSongHeights() {
         let coordinator = TrackTable.Coordinator()
         coordinator.scrollView.frame = NSRect(x: 0, y: 0, width: 900, height: 700)

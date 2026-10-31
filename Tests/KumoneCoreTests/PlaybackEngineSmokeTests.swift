@@ -1497,11 +1497,12 @@ struct PlaybackEngineSmokeTests {
             let nominal = samples.filter { $0.t < completedAt - 1.8 }.map(\.peak).max() ?? 0
             #expect(nominal > 0.05, "\(name): deck A should be sounding before the overlap (peak \(nominal))")
 
-            // The level the style had already brought deck A down to, taken
-            // over the last 150 ms before the reset. Everything after the
-            // reset has to stay at or below it: the outgoing deck may keep
-            // decaying (an `.echoOut` tail does), it may never come back up.
-            let before = samples.filter { $0.t > completedAt - 0.15 && $0.t <= completedAt }
+            // Compare against the pre-reset envelope. This crossfade uses the
+            // default echo delay: sample a full repeat so a trough in the last
+            // 150 ms cannot make the next decaying echo look like resurrection.
+            let baselineDuration = planned.style.outroEffect == .echoOut
+                ? TransitionAutomation.echoDefaultDelayTime : 0.15
+            let before = samples.filter { $0.t > completedAt - baselineDuration && $0.t <= completedAt }
             let ceiling = max((before.map(\.peak).max() ?? 0) * 1.5, nominal * 0.02)
             // One render buffer of grace: the mixer smooths a gain change over
             // a few ms, so the very first buffer may still be crossing down.
