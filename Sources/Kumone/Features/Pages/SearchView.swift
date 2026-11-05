@@ -56,10 +56,10 @@ final class SearchViewModel: ObservableObject {
         // instead of keeping an empty result for this query.
         switch tab {
         case .all:
-            async let songsTask = try? NeteaseAPI.search(trimmed, type: .songs, limit: 12)
-            async let artistsTask = try? NeteaseAPI.search(trimmed, type: .artists, limit: 10)
-            async let albumsTask = try? NeteaseAPI.search(trimmed, type: .albums, limit: 10)
-            async let playlistsTask = try? NeteaseAPI.search(trimmed, type: .playlists, limit: 10)
+            async let songsTask = try? MusicAPI.search(trimmed, type: .songs, limit: 12)
+            async let artistsTask = try? MusicAPI.search(trimmed, type: .artists, limit: 10)
+            async let albumsTask = try? MusicAPI.search(trimmed, type: .albums, limit: 10)
+            async let playlistsTask = try? MusicAPI.search(trimmed, type: .playlists, limit: 10)
             let (songResult, artistResult, albumResult, playlistResult) =
                 await (songsTask, artistsTask, albumsTask, playlistsTask)
             guard generation == requestGeneration else { return }
@@ -71,19 +71,19 @@ final class SearchViewModel: ObservableObject {
                 loadedTabs.remove(tab)
             }
         case .songs:
-            let result = try? await NeteaseAPI.search(trimmed, type: .songs, limit: 100)
+            let result = try? await MusicAPI.search(trimmed, type: .songs, limit: 100)
             guard generation == requestGeneration else { return }
             if let result { songs = result.songs ?? songs } else { loadedTabs.remove(tab) }
         case .artists:
-            let result = try? await NeteaseAPI.search(trimmed, type: .artists, limit: 50)
+            let result = try? await MusicAPI.search(trimmed, type: .artists, limit: 50)
             guard generation == requestGeneration else { return }
             if let result { artists = result.artists ?? artists } else { loadedTabs.remove(tab) }
         case .albums:
-            let result = try? await NeteaseAPI.search(trimmed, type: .albums, limit: 50)
+            let result = try? await MusicAPI.search(trimmed, type: .albums, limit: 50)
             guard generation == requestGeneration else { return }
             if let result { albums = result.albums ?? albums } else { loadedTabs.remove(tab) }
         case .playlists:
-            let result = try? await NeteaseAPI.search(trimmed, type: .playlists, limit: 50)
+            let result = try? await MusicAPI.search(trimmed, type: .playlists, limit: 50)
             guard generation == requestGeneration else { return }
             if let result { playlists = result.playlists ?? playlists } else { loadedTabs.remove(tab) }
         }
@@ -105,7 +105,14 @@ struct SearchView: View {
         // iPad enters SearchView from the sidebar, where the desktop window
         // toolbar search field is unavailable. On macOS, MainWindow owns the
         // only search field and navigates here with its submitted query.
-        .searchable(text: $searchText, prompt: "搜索歌曲、歌手、专辑、歌单")
+        // Keep the field pinned under the title. The default drawer collapses
+        // until the page scrolls, and the empty search page has nothing to
+        // scroll, so the field stayed hidden on the iPhone Search tab.
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "搜索歌曲、歌手、专辑、歌单"
+        )
         .onSubmit(of: .search) {
             model.setQuery(searchText)
             Task { await model.load(tab: model.tab) }

@@ -106,7 +106,7 @@ struct Shelf<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
             SectionHeader(title: title, action: seeAll)
                 .padding(.horizontal, Theme.Layout.contentInset)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -114,6 +114,7 @@ struct Shelf<Content: View>: View {
                     .padding(.vertical, 6)
             }
             .compatScrollClipDisabled()
+            .shelfEdgeClip()
         }
     }
 
