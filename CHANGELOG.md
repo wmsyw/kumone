@@ -7,6 +7,56 @@
 `---` 分隔，随后是完整的**中文**部分（`### 新增` / `### 修复` / `### 改进`）。英文块与中文块
 的条目一一对应、顺序一致。（0.3.19 起采用此双语分块格式；更早的版本沿用旧的中英交替格式。）
 
+## 0.3.32 - 2026-11-09
+
+### Added
+
+- **iOS**: eight sound-effect presets and a ten-band custom equalizer on the now-playing page and in Settings, with a live response curve. A change applies to the playing track without rebuilding the player (#191).
+
+### Improved
+
+- **iOS**: the app follows the system language, English or Simplified Chinese, as the macOS app does (#191).
+- **Localization**: the English interface is complete on macOS, iOS and CarPlay. Album, playlist, artist and search pages, the iOS updater and CarPlay no longer fall back to Chinese, and VoiceOver reads the now-playing buttons in English. CarPlay play counts use K/M/B in English.
+- **Downloads**: a failed download now says why — the service's own reason (such as a risk-control refusal) or the system error code — instead of only asking you to check the network (#141).
+
+---
+
+### 新增
+
+- **iOS**：播放页和设置里新增八种音效预设和十段自定义均衡器，并带实时频率响应曲线。切换后直接作用于当前播放，不用重建播放器（#191）。
+
+### 改进
+
+- **iOS**：与 macOS 一样跟随系统语言，支持英文和简体中文（#191）。
+- **本地化**：macOS、iOS 与 CarPlay 的英文界面补齐。专辑、歌单、歌手与搜索页面、iOS 更新流程和 CarPlay 不再夹杂中文，播放页按钮的 VoiceOver 朗读也有了英文。CarPlay 的播放次数在英文下使用 K/M/B。
+- **下载**：下载失败时会说明原因（如服务端的风控拒绝）或系统错误码，而不再只提示检查网络（#141）。
+
+## 0.3.31 - 2026-11-09
+
+### Fixed
+
+- **Downloads**: lossless and Hi-Res downloads no longer fail with "Audio verification failed": the CDN labels FLAC files as MP3, and that label no longer rejects a file whose checksum and decoding are already verified (#147).
+
+---
+
+### 修复
+
+- **下载**：无损和 Hi-Res 音质下载不再报「音频校验失败」。CDN 会把 FLAC 文件标成 MP3 类型，现在不再因为这个标签拒收已通过校验和解码验证的文件（#147）。
+
+## 0.3.30 - 2026-11-09
+
+### Fixed
+
+- **macOS**: on macOS 15 Sequoia, the toolbar search field stays at the trailing end of the window instead of sitting beside the sidebar toggle and covering the page title (#188).
+- **macOS**: on macOS 15 Sequoia, the sidebar is back to the system sidebar material, flush with the window edge, and the toolbar is back to its standard height (#193).
+
+---
+
+### 修复
+
+- **macOS**：在 macOS 15 Sequoia 上，工具栏搜索框保持在窗口右侧，而不再挤在侧栏按钮旁边挡住页面标题（#188）。
+- **macOS**：在 macOS 15 Sequoia 上，侧栏恢复系统原生侧栏材质并贴齐窗口边缘，工具栏恢复标准高度（#193）。
+
 ## 0.3.29 - 2026-11-06
 
 ### Fixed
