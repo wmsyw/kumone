@@ -82,6 +82,58 @@ enum MusicAPI {
         _ = try? await client.eapi("/login/token/refresh")
     }
 
+    enum CookieLoginError: LocalizedError {
+        case invalidHeader
+        case validationFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidHeader: return String(localized: "请输入有效的 Cookie，包含非空的 MUSIC_U，可选 __csrf")
+            case .validationFailed: return String(localized: "Cookie 登录验证失败，请检查 Cookie 或稍后重试")
+            }
+        }
+    }
+
+    struct VerifiedLogin {
+        let profile: UserProfile
+        let cookies: [String: String]
+    }
+
+    /// Browser Cookie headers use single semicolons, unlike QR response cookies.
+    /// Candidate credentials stay in an isolated jar until the account is verified.
+    static func loginWithCookie(
+        _ header: String,
+        using candidate: MusicClient = MusicClient(configuration: .ephemeral, persistsCookies: false)
+    ) async throws -> VerifiedLogin {
+        var authentication: [String: String] = [:]
+        for part in header.split(separator: ";") {
+            let pair = part.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            let name = pair[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard name == "MUSIC_U" || name == "__csrf" else { continue }
+            guard pair.count == 2, authentication[name] == nil else { throw CookieLoginError.invalidHeader }
+            let value = pair[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty, value.utf8.allSatisfy({
+                $0 >= 0x21 && $0 <= 0x7e && $0 != 0x22 && $0 != 0x2c && $0 != 0x5c
+            }) else { throw CookieLoginError.invalidHeader }
+            authentication[name] = value
+        }
+        guard authentication["MUSIC_U"] != nil else { throw CookieLoginError.invalidHeader }
+        try Task.checkCancellation()
+        do {
+            try candidate.replaceAuthentication(with: authentication)
+            guard let profile = try await userAccount(using: candidate), profile.userId > 0 else {
+                throw CookieLoginError.validationFailed
+            }
+            try Task.checkCancellation()
+            return VerifiedLogin(profile: profile, cookies: candidate.authenticationCookies())
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Server and transport errors may contain credential material.
+            throw CookieLoginError.validationFailed
+        }
+    }
+
     struct AccountResponse: Decodable {
         let code: Int
         let profile: UserProfile?
@@ -145,6 +197,39 @@ enum MusicAPI {
         let resp = try await eapi(PlayRecordResponse.self, "/v1/play/record",
                                   ["uid": uid, "type": week ? 1 : 0])
         return (week ? resp.weekData : resp.allData) ?? []
+    }
+
+    struct RecentSongsResponse: Decodable {
+        struct Body: Decodable {
+            let list: [RecentPlay]
+
+            private enum CodingKeys: String, CodingKey {
+                case list
+            }
+
+            /// Skips an entry that is not a song rather than losing the list.
+            private struct Entry: Decodable {
+                let play: RecentPlay?
+                init(from decoder: Decoder) throws { play = try? RecentPlay(from: decoder) }
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                list = ((try? c.decode([Entry].self, forKey: .list)) ?? []).compactMap(\.play)
+            }
+        }
+
+        let data: Body?
+    }
+
+    /// The official 最近播放 list: songs in the order they were last played,
+    /// on any device of the account. `/v1/play/record` (`playRecords`) is the
+    /// listening ranking instead, ordered by play count (#198).
+    static func recentSongs(limit: Int = 300, using client: MusicClient = .shared) async throws -> [RecentPlay] {
+        let data = try await client.eapi("/play-record/song/list", ["limit": limit])
+        let resp = try client.decoded(RecentSongsResponse.self, from: data)
+        var seen: Set<Int> = []
+        return (resp.data?.list ?? []).filter { $0.song.id > 0 && seen.insert($0.song.id).inserted }
     }
 
     struct CloudResponse: Decodable {
@@ -276,6 +361,56 @@ enum MusicAPI {
             "/v2/discovery/recommend/dislike",
             ["resId": id, "resType": 4, "sceneType": 1]
         ).data
+    }
+
+    static func addToMusicBlacklist(_ target: MusicBlacklistTarget,
+                                    using client: MusicClient = .shared) async throws {
+        guard client.isLoggedIn else { throw MusicAPIError.needLogin }
+        let type: String
+        let id: Int
+        switch target {
+        case .song(let songID):
+            type = "song"
+            id = songID
+        case .artist(let artistID):
+            type = "artist"
+            id = artistID
+        }
+        guard id > 0 else {
+            throw MusicAPIError.business(code: 400, message: String(localized: "无法识别这项音乐内容"))
+        }
+        let data = try await client.eapi("/music-blacklist/add",
+                                         ["contentType": type, "contentIdList": [String(id)]])
+        _ = try client.decoded(CodeOnly.self, from: data)
+    }
+
+    // MARK: - Comments
+
+    /// The comment thread of a song.
+    static func songCommentThread(songID: Int) -> String { "R_SO_4_\(songID)" }
+
+    /// A page of a song's latest comments from `offset`, and on the first
+    /// page its hot comments too.
+    static func songComments(songID: Int, limit: Int = 20, offset: Int = 0,
+                             using client: MusicClient = .shared) async throws -> SongCommentsPage {
+        guard songID > 0 else {
+            throw MusicAPIError.business(code: 400, message: String(localized: "无法识别这首歌曲"))
+        }
+        let data = try await client.eapi("/v1/resource/comments/\(songCommentThread(songID: songID))",
+                                         ["limit": limit, "offset": offset])
+        return try client.decoded(SongCommentsPage.self, from: data)
+    }
+
+    /// Likes a comment for the signed-in listener, or takes the like back.
+    static func likeComment(threadID: String, commentID: Int, like: Bool,
+                            using client: MusicClient = .shared) async throws {
+        guard client.isLoggedIn else { throw MusicAPIError.needLogin }
+        guard commentID > 0 else {
+            throw MusicAPIError.business(code: 400, message: String(localized: "无法识别这条评论"))
+        }
+        let data = try await client.eapi(like ? "/v1/comment/like" : "/v1/comment/unlike",
+                                         ["threadId": threadID, "commentId": String(commentID)])
+        _ = try client.decoded(CodeOnly.self, from: data)
     }
 
     struct PlaylistDetailResponse: Decodable {
@@ -413,11 +548,28 @@ enum MusicAPI {
         let data: [SongURLData]
     }
 
-    static func songURL(ids: [Int], level: String) async throws -> [SongURLData] {
+    static func songURL(ids: [Int], level: String, using client: MusicClient = .shared) async throws -> [SongURLData] {
         let idString = "[" + ids.map(String.init).joined(separator: ",") + "]"
         var payload: [String: Any] = ["ids": idString, "level": level, "encodeType": "flac"]
         if level == "sky" { payload["immerseType"] = "c51" }
-        return try await eapi(SongURLResponse.self, "/song/enhance/player/url/v1", payload).data
+        let data = try await client.eapi("/song/enhance/player/url/v1", payload)
+        return try client.decoded(SongURLResponse.self, from: data).data
+    }
+
+    /// `songURL`, asked once more after a moment when the request dies in
+    /// transit. The first request after the app sat idle often lands on a
+    /// pooled connection the server already closed; URLSession retries a GET
+    /// on its own but not this POST, so the first song played failed with
+    /// 无法播放 while a second try a moment later worked (#210). Reading a
+    /// playback URL changes nothing, so asking twice is safe.
+    static func songURLRetrying(ids: [Int], level: String, using client: MusicClient = .shared,
+                                retryDelay: Duration = .milliseconds(400)) async throws -> [SongURLData] {
+        do {
+            return try await songURL(ids: ids, level: level, using: client)
+        } catch where TransientRequestFailure.matches(error) {
+            try await Task.sleep(for: retryDelay)
+            return try await songURL(ids: ids, level: level, using: client)
+        }
     }
 
     /// Download eligibility is resolved independently of the playback URL.

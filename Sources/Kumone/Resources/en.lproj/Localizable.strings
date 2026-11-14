@@ -161,7 +161,12 @@
 "根据你的音乐口味 · 每天 6:00 更新" = "Based on your taste · Refreshes daily at 6:00";
 "登录后才能查看每日推荐" = "Sign in to see daily recommendations";
 "减少推荐" = "Recommend less";
+"不感兴趣" = "Not interested";
 "已减少推荐" = "Recommendation reduced";
+"这首歌" = "This song";
+"音乐人：%@" = "Artist: %@";
+"已加入音乐黑名单" = "Added to music blacklist";
+"无法识别这项音乐内容" = "This music item could not be identified";
 "登录后查看你喜欢的音乐" = "Sign in to see your liked songs";
 
 /* Search */
@@ -174,8 +179,8 @@
 /* Collections / recents / cloud */
 "还没有收藏专辑" = "No saved albums yet";
 "还没有关注歌手" = "No followed artists yet";
-"所有时间" = "All Time";
-"最近一周" = "Past Week";
+"本周排行" = "Top This Week";
+"总排行" = "Top All Time";
 "暂无播放记录" = "No listening history yet";
 "%lld 次" = "%lld plays";
 "云盘还没有歌曲" = "No songs in your cloud disk";
@@ -411,6 +416,15 @@
 "正在加载歌单，搜索结果会继续更新…" = "Loading playlist — search results will keep updating…";
 "歌单未完整加载，搜索结果可能不完整" = "Playlist loading is incomplete; search results may be incomplete";
 
+/* Cloud disk search */
+"在云盘内查找" = "Search in Cloud Disk";
+"搜索云盘歌曲" = "Search in cloud disk";
+"按歌名、歌手、专辑或文件名搜索" = "Search by song, artist, album, or file name";
+"试试其他歌名、歌手、专辑或文件名" = "Try another song, artist, album, or file name";
+"正在加载云盘…" = "Loading cloud disk…";
+"正在加载云盘，搜索结果会继续更新…" = "Loading cloud disk — search results will keep updating…";
+"云盘未完整加载，搜索结果可能不完整" = "Cloud disk loading is incomplete; search results may be incomplete";
+
 // Downloads
 "下载任务" = "Download Queue";
 "已下载" = "Downloaded";
@@ -556,6 +570,13 @@
 "请先完成首次使用的设置" = "Finish first-launch setup first";
 "请先登录账号" = "Sign in first";
 
+/* Cookie login */
+"Cookie 登录" = "Cookie Login";
+"Cookie 内容" = "Cookie contents";
+"在浏览器登录网易云音乐后，粘贴包含 MUSIC_U 的 Cookie；可同时包含 __csrf。请勿分享 Cookie。" = "Sign in to NetEase Cloud Music in a browser, then paste a Cookie containing MUSIC_U and optionally __csrf. Keep your Cookie private.";
+"请输入有效的 Cookie，包含非空的 MUSIC_U，可选 __csrf" = "Enter a valid Cookie with a nonempty MUSIC_U and optionally __csrf.";
+"Cookie 登录验证失败，请检查 Cookie 或稍后重试" = "Cookie login could not be verified. Check your Cookie or try again later.";
+
 /* Main window sidebar (macOS) */
 "显示或隐藏边栏" = "Show or Hide Sidebar";
 "显示或隐藏边栏 (⌃⌘S)" = "Show or hide the sidebar (⌃⌘S)";
@@ -654,3 +675,19 @@
 "关闭随机播放" = "Turn Off Shuffle";
 "下载失败：%@" = "Download failed: %@";
 "下载失败（%@ %@），请检查网络或账号权限后重试" = "Download failed (%@ %@). Check your network or account access and try again";
+
+/* Song comments */
+"查看评论" = "View Comments";
+"热门评论" = "Top Comments";
+"最新评论" = "Latest Comments";
+"还没有评论" = "No comments yet";
+"%lld 条评论" = "%lld comments";
+"没有更多评论了" = "No more comments";
+"登录后可点赞评论" = "Sign in to like comments";
+"匿名用户" = "Anonymous";
+"回复 @%@：%@" = "Replying to @%@: %@";
+"回复 @%@" = "Replying to @%@";
+"点赞" = "Like";
+"取消点赞" = "Unlike";
+"无法识别这首歌曲" = "Unable to identify this song";
+"无法识别这条评论" = "Unable to identify this comment";

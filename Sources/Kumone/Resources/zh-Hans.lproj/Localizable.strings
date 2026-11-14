@@ -1,6 +1,15 @@
 /* Kumone — 简体中文。
    源字符串即为简体中文，查表未命中时回退到 key 本身，因此这里只需声明该语言存在。 */
 
+// Recommendation actions
+"减少推荐" = "减少推荐";
+"不感兴趣" = "不感兴趣";
+"已减少推荐" = "已减少推荐";
+"这首歌" = "这首歌";
+"音乐人：%@" = "音乐人：%@";
+"已加入音乐黑名单" = "已加入音乐黑名单";
+"无法识别这项音乐内容" = "无法识别这项音乐内容";
+
 // Downloads
 "下载任务" = "下载任务";
 "已下载" = "已下载";
@@ -152,6 +161,13 @@
 "打开 Kumone" = "打开 Kumone";
 "设置…" = "设置…";
 "退出 Kumone" = "退出 Kumone";
+
+/* Cookie login */
+"Cookie 登录" = "Cookie 登录";
+"Cookie 内容" = "Cookie 内容";
+"在浏览器登录网易云音乐后，粘贴包含 MUSIC_U 的 Cookie；可同时包含 __csrf。请勿分享 Cookie。" = "在浏览器登录网易云音乐后，粘贴包含 MUSIC_U 的 Cookie；可同时包含 __csrf。请勿分享 Cookie。";
+"请输入有效的 Cookie，包含非空的 MUSIC_U，可选 __csrf" = "请输入有效的 Cookie，包含非空的 MUSIC_U，可选 __csrf";
+"Cookie 登录验证失败，请检查 Cookie 或稍后重试" = "Cookie 登录验证失败，请检查 Cookie 或稍后重试";
 
 // iOS 音效
 "音效" = "音效";

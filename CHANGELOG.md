@@ -7,6 +7,88 @@
 `---` 分隔，随后是完整的**中文**部分（`### 新增` / `### 修复` / `### 改进`）。英文块与中文块
 的条目一一对应、顺序一致。（0.3.19 起采用此双语分块格式；更早的版本沿用旧的中英交替格式。）
 
+## 0.3.35 - 2026-11-13
+
+### Added
+
+- **Comments**: on the iPhone now-playing page, swipe left from the lyrics to the song's comments, and right to return; two dots show which page is up. Comments load when you first turn to them and follow the song that is playing.
+
+### Fixed
+
+- **Playback**: a request for a song's playback address that drops, times out or meets a server error is retried once, instead of failing at once with "Unable to play" or switching to a third-party source (#210).
+- **iOS**: songs the service can play no longer keep playing from a third-party source copy in the cache; that copy is only used when the service refuses the song. Thanks @yuanruoyu515 (#205, closes #206).
+- **iOS 16/17**: the now-playing page no longer stops part way when it opens from the mini player, leaving it short of the top; it now opens as a full-screen page (#213).
+
+---
+
+### 新增
+
+- **评论**：iPhone 播放页的歌词向左滑即可查看这首歌的评论，向右滑回到歌词，底部两个小圆点提示当前页。评论在第一次翻到时才加载，并跟随正在播放的歌曲切换。
+
+### 修复
+
+- **播放**：获取播放地址的请求断线、超时或遇到服务器错误时会自动重试一次，不再直接提示「无法播放」或转到第三方音源（#210）。
+- **iOS**：网易云能播放的歌曲，不再一直播放缓存里的第三方音源副本；只有网易云拒绝时才会使用它。感谢 @yuanruoyu515（#205，关闭 #206）。
+- **iOS 16/17**：从迷你播放条打开播放页时，不会再停在半路、没有铺满屏幕，现在以全屏页面打开（#213）。
+
+## 0.3.34 - 2026-11-12
+
+### Added
+
+- **Comments**: read a song's comments from its context menu, or on iOS from the now-playing page's More menu — top comments first, then the latest, loading more as you scroll, with the reply each one answers and its likes. Signed in, you can like a comment or take the like back (#113).
+- **Search**: on iOS every playlist can be searched (the magnifying glass, or pull down), not only Liked Songs; tapping a result plays the whole playlist from that song (#185).
+- **Cloud Disk**: search by song, artist, album or uploaded file name, on macOS and iOS. The cloud disk now loads every song instead of the first 1,000, so search and Play All cover them all (#186).
+
+### Improved
+
+- **iOS**: Daily Recs drops the large cover banner at the top, so the songs start right below the date, title and Play All.
+
+---
+
+### 新增
+
+- **评论**：从歌曲的右键 / 长按菜单，或 iOS 播放页的「更多」菜单查看歌曲评论——先显示热门评论，再显示最新评论，滚动时自动加载更多，并显示所回复的评论和点赞数。登录后可以给评论点赞或取消点赞（#113）。
+- **搜索**：iOS 上所有歌单都可以在歌单内搜索（右上角放大镜，或在列表顶部下拉），不再只限「我喜欢的音乐」；点搜索结果会从这首开始播放整个歌单（#185）。
+- **音乐云盘**：macOS 和 iOS 都可以按歌名、歌手、专辑或上传的文件名搜索。云盘现在会加载全部歌曲，不再只加载前 1000 首，搜索和「播放全部」都覆盖所有歌曲（#186）。
+
+### 改进
+
+- **iOS**：每日推荐去掉了顶部的大封面横幅，日期、标题和「播放全部」下面直接就是歌曲列表。
+
+## 0.3.33 - 2026-11-12
+
+### Added
+
+- **Login**: sign in with a Cookie when QR or SMS login does not work — paste a browser Cookie with `MUSIC_U` (and optionally `__csrf`); it is verified on its own before it replaces the current session. Thanks @mvanhorn (#176, closes #150).
+- **Recommendations**: add a song or an artist to the account's music blacklist from a song's menu, the now-playing page's More menu or an artist page, on macOS and iOS. The daily recommendations' "Not interested" is now on iOS too. Thanks @yamakze (#195).
+
+### Fixed
+
+- **Recently Played**: lists the songs you played last, newest first, with when each was played, as the official app does; it used to show the listening ranking by play count, which stays available under Top This Week and Top All Time (#198).
+- **Storage**: the device's used space counts purgeable space as available, matching the system's storage settings (#199).
+
+### Improved
+
+- **macOS**: on Sequoia the sidebar's first item sits where the system sidebar put it, and Back returns to the front of the page title, following the page's edge, with hover and press feedback. Thanks @yamakze (#196).
+- **macOS**: built with the macOS 27.2 SDK, so on macOS 27 the window takes on the system's current look, such as the new traffic-light buttons (#197).
+
+---
+
+### 新增
+
+- **登录**：扫码或短信登录用不了时，可以用 Cookie 登录——粘贴浏览器里包含 `MUSIC_U`（可选 `__csrf`）的 Cookie，验证通过后才会替换当前会话。感谢 @mvanhorn（#176，关闭 #150）。
+- **推荐**：在 macOS 和 iOS 上，可以从歌曲菜单、播放页「更多」菜单或歌手页，把单曲或音乐人加入账号的音乐黑名单。每日推荐的「不感兴趣」也来到了 iOS。感谢 @yamakze（#195）。
+
+### 修复
+
+- **最近播放**：按播放时间从新到旧列出最近听过的歌，并显示播放时间，与官方 App 一致；此前显示的是按播放次数排序的听歌排行，现在保留在「本周排行」和「总排行」中（#198）。
+- **存储空间**：设备已用空间把可清除空间算作可用，与系统的存储设置一致（#199）。
+
+### 改进
+
+- **macOS**：Sequoia 上侧栏首项的位置与系统侧栏一致；返回按钮回到页面标题前，跟随页面边缘，并有悬浮和按下反馈。感谢 @yamakze（#196）。
+- **macOS**：改用 macOS 27.2 SDK 构建，在 macOS 27 上窗口会使用系统当前的外观，例如新的红绿灯按钮（#197）。
+
 ## 0.3.32 - 2026-11-09
 
 ### Added
